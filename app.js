@@ -526,6 +526,24 @@ function resumeStream(channelId) {
   }
 }
 
+function syncAllStreams() {
+  if (playerMap.size === 0) { showToast('No live streams to sync', 'info'); return; }
+  let count = 0;
+  for (const [, player] of playerMap) {
+    try {
+      // Seeking to getDuration() jumps to the live edge
+      player.seekTo(player.getDuration(), true);
+      count++;
+    } catch {}
+  }
+  if (count > 0) {
+    const btn = document.getElementById('btn-sync');
+    btn.classList.add('syncing');
+    setTimeout(() => btn.classList.remove('syncing'), 1000);
+    showToast(`Synced ${count} stream${count > 1 ? 's' : ''} to live`, 'success');
+  }
+}
+
 function updateViewerCount(channelId, viewers) {
   const cell = document.querySelector(`.stream-cell[data-channel-id="${channelId}"]`);
   const vc = cell?.querySelector('.viewer-count');
@@ -720,6 +738,8 @@ function handleVisibilityChange() {
 
 // ── Toolbar Setup ─────────────────────────────────────────────────────────
 function setupToolbar() {
+  document.getElementById('btn-sync').addEventListener('click', syncAllStreams);
+
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     if (isRefreshing) return;
     await refreshAllChannels();

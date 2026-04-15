@@ -104,6 +104,17 @@ html, body {
   animation: spin 1s linear infinite;
 }
 
+#btn-sync.syncing {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  animation: sync-flash 0.25s ease 4;
+}
+
+@keyframes sync-flash {
+  0%, 100% { background: var(--surface2); }
+  50%       { background: var(--accent-dim); }
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }

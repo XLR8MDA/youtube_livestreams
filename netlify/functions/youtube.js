@@ -14,11 +14,19 @@ const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
 exports.handler = async (event) => {
   const apiKey = process.env.YOUTUBE_API_KEY;
 
+  console.log('[youtube fn] key present:', !!apiKey, '| method:', event.httpMethod);
+
   if (!apiKey) {
+    console.error('[youtube fn] YOUTUBE_API_KEY is not set in environment variables');
     return respond(500, { error: 'YOUTUBE_API_KEY environment variable is not set' });
   }
 
+  // Health check — GET with no endpoint param
   const params = event.queryStringParameters || {};
+  if (!params.endpoint) {
+    return respond(200, { ok: true, keyPresent: true });
+  }
+
   const { endpoint, ...ytParams } = params;
 
   if (!endpoint || !ALLOWED_ENDPOINTS.has(endpoint)) {

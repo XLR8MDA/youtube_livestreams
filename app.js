@@ -89,11 +89,12 @@ function injectYouTubeAPI() {
   document.head.appendChild(tag);
 }
 
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
 // Returns true if API calls will work — either a local key is set,
 // or we're on a deployed host where the serverless proxy provides the key.
 function hasApiAccess() {
-  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  if (!isLocal) return true; // Netlify function handles the key server-side
+  if (!isLocalHost) return true; // Netlify function handles the key server-side
   return !!(apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE' && apiKey !== '');
 }
 
@@ -120,13 +121,13 @@ async function initDashboard() {
 async function apiFetch(endpoint, params) {
   let url;
 
-  if (apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE') {
+  if (isLocalHost && apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE') {
     // Local dev: call YouTube API directly with the stored key
     url = new URL(`${YT_API_BASE}/${endpoint}`);
     params.key = apiKey;
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   } else {
-    // Netlify (or no key set): route through serverless proxy — key stays server-side
+    // Deployed: route through serverless proxy — key stays server-side
     url = new URL('/.netlify/functions/youtube', window.location.origin);
     url.searchParams.set('endpoint', endpoint);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));

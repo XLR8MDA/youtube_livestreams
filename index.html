@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Stream Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
+  <header id="toolbar">
+    <span id="app-title">TRADING STREAMS</span>
+
+    <div id="toolbar-right">
+      <span id="live-count">— LIVE</span>
+      <button id="btn-refresh" title="Refresh live status">&#8635;</button>
+      <button id="btn-manage" title="Manage channels">&#9881;</button>
+    </div>
+  </header>
+
+  <!-- ── Stream grid ─────────────────────────────────────────────────────── -->
+  <main id="grid-container">
+    <!-- .stream-cell divs injected by app.js -->
+  </main>
+
+  <!-- ── Manage Channels Modal ───────────────────────────────────────────── -->
+  <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Manage Channels">
+    <div id="modal">
+      <div id="modal-header">
+        <h2>Manage Channels</h2>
+        <button id="btn-close-modal" title="Close">&times;</button>
+      </div>
+
+      <div id="api-key-section">
+        <label for="api-key-input">YouTube API Key</label>
+        <div class="input-row">
+          <input id="api-key-input" type="password" placeholder="AIza...">
+          <button id="btn-save-key">Save</button>
+        </div>
+        <p class="hint">Get a free key at <strong>console.cloud.google.com</strong> → YouTube Data API v3</p>
+      </div>
+
+      <div id="channel-list-section">
+        <h3>Channels</h3>
+        <ul id="channel-list">
+          <!-- populated by app.js -->
+        </ul>
+      </div>
+
+      <div id="add-channel-section">
+        <h3>Add Channel</h3>
+        <div class="input-row">
+          <input id="channel-input" type="text" placeholder="Live stream URL, @handle, channel URL, or UC... ID">
+          <button id="btn-add-channel">Add</button>
+        </div>
+        <p class="hint">Paste a live stream URL, channel URL, @handle, or channel ID (UC...)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast notifications ────────────────────────────────────────────── -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Scripts: config must load before app -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

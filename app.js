@@ -555,7 +555,7 @@ async function addChannel(inputValue) {
   const raw = inputValue.trim();
   if (!raw) return;
 
-  if (!apiKey || apiKey === 'YOUR_GOOGLE_API_KEY_HERE') {
+  if (!hasApiAccess()) {
     showToast('Set your API key first', 'error');
     return;
   }

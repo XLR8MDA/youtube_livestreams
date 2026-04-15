@@ -89,9 +89,17 @@ function injectYouTubeAPI() {
   document.head.appendChild(tag);
 }
 
+// Returns true if API calls will work — either a local key is set,
+// or we're on a deployed host where the serverless proxy provides the key.
+function hasApiAccess() {
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (!isLocal) return true; // Netlify function handles the key server-side
+  return !!(apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE' && apiKey !== '');
+}
+
 async function initDashboard() {
   updateLiveCount();
-  if (!apiKey || apiKey === 'YOUR_GOOGLE_API_KEY_HERE') {
+  if (!hasApiAccess()) {
     showEmptyState('Set your API key to get started', '🔑');
     openModal();
     showToast('Please set your YouTube API key first', 'info');
@@ -764,6 +772,9 @@ function setupModal() {
 
 function openModal() {
   renderChannelList();
+  // Hide the API key section when deployed (key lives in env var, not browser)
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  document.getElementById('api-key-section').style.display = isLocal ? '' : 'none';
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 

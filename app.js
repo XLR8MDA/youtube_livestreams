@@ -17,12 +17,16 @@ let fastPollTimer = null;
 let slowPollTimer = null;
 let apiKey = '';
 let isRefreshing = false;
+let dbChannelsPromise = null; // resolves when NeonDB channels are loaded
 
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
 
 function init() {
   loadState();
+  // Start loading from NeonDB in parallel with the YouTube IFrame API load.
+  // On localhost there is no DB — skip it.
+  dbChannelsPromise = isLocalHost ? Promise.resolve() : loadChannelsFromDB();
   setupToolbar();
   setupModal();
   injectYouTubeAPI();
@@ -63,6 +67,81 @@ function saveChannels() {
   localStorage.setItem(LS_CHANNELS, JSON.stringify(channels));
 }
 
+// ── NeonDB Sync ───────────────────────────────────────────────────────────
+
+// Fetch channels from NeonDB and merge them as the source of truth.
+// Called once at startup; gracefully falls back to localStorage on error.
+async function loadChannelsFromDB() {
+  try {
+    const res = await fetch('/.netlify/functions/channels');
+    if (!res.ok) return;
+    const data = await res.json();
+    const dbChannels = data.channels || [];
+
+    if (dbChannels.length === 0 && channels.length > 0) {
+      // DB is empty but localStorage has channels — first-time sync
+      dbSyncChannels();
+      return;
+    }
+    if (dbChannels.length === 0) return;
+
+    // Preserve cached live state (videoId, isLive, viewers) from localStorage
+    const localStateMap = new Map(channels.map(c => [c.channelId, c]));
+
+    channels = dbChannels.map(dbCh => {
+      const local = localStateMap.get(dbCh.channelId) || {};
+      return {
+        channelId: dbCh.channelId,
+        name: dbCh.name,
+        handle: dbCh.handle,
+        paused: dbCh.paused || false,
+        videoId: local.videoId || null,
+        isLive: local.isLive || false,
+        viewers: local.viewers || 0,
+      };
+    });
+
+    saveChannels(); // update localStorage with DB-authoritative list
+  } catch (err) {
+    console.warn('[loadChannelsFromDB]', err.message);
+    // Graceful degradation: continue with whatever is in localStorage
+  }
+}
+
+// Upsert all channels to NeonDB (config only — no live state).
+// Fire-and-forget: never blocks the UI.
+async function dbSyncChannels() {
+  if (isLocalHost) return;
+  try {
+    await fetch('/.netlify/functions/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channels: channels.map(ch => ({
+          channelId: ch.channelId,
+          name: ch.name,
+          handle: ch.handle,
+          paused: ch.paused || false,
+        })),
+      }),
+    });
+  } catch (err) {
+    console.warn('[dbSyncChannels]', err.message);
+  }
+}
+
+// Delete a single channel from NeonDB. Fire-and-forget.
+async function dbDeleteChannel(channelId) {
+  if (isLocalHost) return;
+  try {
+    await fetch(`/.netlify/functions/channels?channelId=${encodeURIComponent(channelId)}`, {
+      method: 'DELETE',
+    });
+  } catch (err) {
+    console.warn('[dbDeleteChannel]', err.message);
+  }
+}
+
 
 function saveActiveAudio() {
   if (activeAudioChannel) {
@@ -99,6 +178,9 @@ function hasApiAccess() {
 }
 
 async function initDashboard() {
+  // Wait for NeonDB channels to be loaded before rendering
+  if (dbChannelsPromise) await dbChannelsPromise;
+
   updateLiveCount();
   if (!hasApiAccess()) {
     showEmptyState('Set your API key to get started', '🔑');
@@ -492,6 +574,7 @@ function pauseStream(channelId) {
   if (!ch) return;
   ch.paused = true;
   saveChannels();
+  dbSyncChannels(); // persist paused state to NeonDB
 
   // If this was the audio stream, clear it
   if (activeAudioChannel === channelId) {
@@ -516,6 +599,7 @@ function resumeStream(channelId) {
   if (!ch) return;
   ch.paused = false;
   saveChannels();
+  dbSyncChannels(); // persist resumed state to NeonDB
 
   // Replace paused cell with a live cell + player
   const oldCell = document.querySelector(`.stream-cell[data-channel-id="${channelId}"]`);
@@ -664,6 +748,7 @@ async function addChannel(inputValue) {
 
   channels.push(newChannel);
   saveChannels();
+  dbSyncChannels(); // persist new channel to NeonDB
   renderChannelList();
   showToast(`Added ${newChannel.name}`, 'success');
 
@@ -701,6 +786,7 @@ function removeChannel(channelId) {
     saveActiveAudio();
   }
   saveChannels();
+  dbDeleteChannel(channelId); // remove from NeonDB
   renderChannelList();
   buildGrid();
   if (ch) showToast(`Removed ${ch.name}`, 'info');

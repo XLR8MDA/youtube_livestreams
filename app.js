@@ -21,8 +21,8 @@ let isRefreshing = false;
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);
 
-function init() {
-  loadState();
+async function init() {
+  await loadState();
   setupToolbar();
   setupModal();
   injectYouTubeAPI();
@@ -30,22 +30,44 @@ function init() {
 }
 
 // ── State Persistence ─────────────────────────────────────────────────────
-function loadState() {
-  // API key: localStorage overrides config
+async function loadState() {
+  // API key and active audio stay in localStorage (per-browser is fine)
   apiKey = localStorage.getItem(LS_API_KEY) || window.TRADING_CONFIG?.API_KEY || '';
-
-  // Active audio channel
   activeAudioChannel = localStorage.getItem(LS_ACTIVE_AUDIO) || null;
 
-  // Channels: merge localStorage with config defaults
+  // Channels: try remote store first when deployed
+  if (!isLocalHost) {
+    try {
+      const res = await fetch('/.netlify/functions/channels');
+      if (res.ok) {
+        const remote = await res.json();
+        if (Array.isArray(remote) && remote.length > 0) {
+          // Remote has data — use it as source of truth
+          channels = remote;
+          localStorage.setItem(LS_CHANNELS, JSON.stringify(channels));
+          return;
+        }
+        // Remote is empty — migrate from localStorage if anything is there
+        let local = [];
+        try { local = JSON.parse(localStorage.getItem(LS_CHANNELS) || '[]'); } catch {}
+        if (local.length > 0) {
+          channels = local;
+          saveChannels(); // uploads to remote
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[loadState] remote fetch failed, using localStorage:', err.message);
+    }
+  }
+
+  // Localhost or remote unavailable — fall back to localStorage + config defaults
   let saved = [];
   try {
     saved = JSON.parse(localStorage.getItem(LS_CHANNELS) || '[]');
   } catch { saved = []; }
 
   const defaults = window.TRADING_CONFIG?.DEFAULT_CHANNELS || [];
-
-  // Merge: saved channels take precedence; add defaults not already in saved
   const seenIds = new Set(saved.map(c => c.channelId).filter(Boolean));
   const seenHandles = new Set(saved.map(c => c.handle).filter(Boolean));
   for (const def of defaults) {
@@ -61,6 +83,14 @@ function loadState() {
 
 function saveChannels() {
   localStorage.setItem(LS_CHANNELS, JSON.stringify(channels));
+  // Persist to remote on deployed site (fire-and-forget)
+  if (!isLocalHost) {
+    fetch('/.netlify/functions/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(channels),
+    }).catch(err => console.warn('[saveChannels] remote save failed:', err.message));
+  }
 }
 
 

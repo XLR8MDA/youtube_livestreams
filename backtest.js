@@ -1,0 +1,422 @@
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────
+let btPlayer       = null;   // YT.Player for backtest
+let btChannelId    = null;
+let btStreamId     = null;
+let btStreamTitle  = null;
+let btNextToken    = null;   // pagination token for past-streams
+
+// ── Entry point ───────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', initBacktest);
+
+function initBacktest() {
+  setupTabs();
+  setupChannelSelect();
+  setupLoadMore();
+  setupRRCalc();
+  setupJournalForm();
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+}
+
+function switchTab(tab) {
+  const isBacktest = tab === 'backtest';
+
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
+  document.getElementById('grid-container').classList.toggle('hidden', isBacktest);
+  document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
+
+  // Hide live-only toolbar buttons on backtest tab
+  ['btn-sync', 'btn-refresh'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isBacktest ? 'none' : '';
+  });
+
+  if (isBacktest) populateChannelSelect();
+}
+
+// ── Channel selector ──────────────────────────────────────────────────────
+function populateChannelSelect() {
+  const sel = document.getElementById('backtest-channel-select');
+  const prev = sel.value;
+  // `channels` is the global array from app.js
+  const list = (typeof channels !== 'undefined' ? channels : []);
+  sel.innerHTML =
+    '<option value="">Select a channel</option>' +
+    list.map(ch =>
+      `<option value="${btEscAttr(ch.channelId)}">${btEscHtml(ch.name || ch.handle || ch.channelId)}</option>`
+    ).join('');
+  if (prev) sel.value = prev;
+}
+
+function setupChannelSelect() {
+  document.getElementById('backtest-channel-select').addEventListener('change', async e => {
+    btChannelId = e.target.value || null;
+    btNextToken = null;
+    clearStreamList();
+    resetPlayer();
+    clearJournal();
+    clearAnalytics();
+    if (btChannelId) await loadPastStreams(btChannelId, null);
+  });
+}
+
+// ── Past streams list ─────────────────────────────────────────────────────
+function clearStreamList() {
+  document.getElementById('backtest-stream-list').innerHTML = '';
+  document.getElementById('stream-list-status').textContent = btChannelId ? 'Loading…' : 'No channel selected.';
+  document.getElementById('stream-list-status').style.display = '';
+  document.getElementById('btn-load-more-streams').classList.add('hidden');
+}
+
+async function loadPastStreams(channelId, pageToken) {
+  const status = document.getElementById('stream-list-status');
+  status.textContent = 'Loading…';
+  status.style.display = '';
+
+  let url = `/.netlify/functions/past-streams?channelId=${encodeURIComponent(channelId)}`;
+  if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const { streams, nextPageToken } = data;
+    btNextToken = nextPageToken || null;
+
+    if (!streams.length && !pageToken) {
+      status.textContent = 'No completed livestreams found for this channel.';
+      return;
+    }
+
+    status.style.display = 'none';
+    appendStreamCards(streams);
+    document.getElementById('btn-load-more-streams').classList.toggle('hidden', !btNextToken);
+  } catch (err) {
+    status.textContent = `Error: ${err.message}`;
+  }
+}
+
+function appendStreamCards(streams) {
+  const list = document.getElementById('backtest-stream-list');
+  for (const s of streams) {
+    const card = document.createElement('div');
+    card.className = 'stream-card';
+    card.dataset.videoId = s.videoId;
+    const date = new Date(s.publishedAt).toLocaleDateString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+    });
+    card.innerHTML = `
+      ${s.thumbnail ? `<img class="stream-card-thumb" src="${btEscAttr(s.thumbnail)}" alt="">` : ''}
+      <div class="stream-card-info">
+        <div class="stream-card-title">${btEscHtml(s.title)}</div>
+        <div class="stream-card-date">${date}</div>
+      </div>
+    `;
+    card.addEventListener('click', () => selectStream(s.videoId, s.title));
+    list.appendChild(card);
+  }
+}
+
+function setupLoadMore() {
+  document.getElementById('btn-load-more-streams').addEventListener('click', async () => {
+    if (btChannelId && btNextToken) await loadPastStreams(btChannelId, btNextToken);
+  });
+}
+
+// ── Player ────────────────────────────────────────────────────────────────
+function selectStream(videoId, title) {
+  document.querySelectorAll('.stream-card').forEach(c =>
+    c.classList.toggle('active', c.dataset.videoId === videoId)
+  );
+
+  btStreamId    = videoId;
+  btStreamTitle = title;
+
+  document.getElementById('backtest-player-title').textContent = title;
+  document.getElementById('backtest-player-empty').classList.add('hidden');
+  document.getElementById('backtest-player-frame').classList.remove('hidden');
+  document.getElementById('journal-context').textContent = `Logging for: ${title}`;
+
+  if (btPlayer) {
+    btPlayer.loadVideoById(videoId);
+  } else {
+    btPlayer = new YT.Player('backtest-player', {
+      videoId,
+      playerVars: { controls: 1, rel: 0, modestbranding: 1 },
+    });
+  }
+
+  if (btChannelId) {
+    loadJournalEntries(btChannelId, videoId);
+    loadChannelAnalytics(btChannelId);
+  }
+}
+
+function resetPlayer() {
+  btStreamId    = null;
+  btStreamTitle = null;
+  document.getElementById('backtest-player-title').textContent = 'No stream selected';
+  document.getElementById('backtest-player-empty').classList.remove('hidden');
+  document.getElementById('backtest-player-frame').classList.add('hidden');
+  if (btPlayer) {
+    try { btPlayer.destroy(); } catch {}
+    btPlayer = null;
+  }
+}
+
+// ── R:R auto-calc ─────────────────────────────────────────────────────────
+function setupRRCalc() {
+  ['trade-entry', 'trade-exit', 'trade-stop'].forEach(id => {
+    document.getElementById(id).addEventListener('input', calcRR);
+  });
+}
+
+function calcRR() {
+  const entry = parseFloat(document.getElementById('trade-entry').value);
+  const exit  = parseFloat(document.getElementById('trade-exit').value);
+  const stop  = parseFloat(document.getElementById('trade-stop').value);
+  const rrEl  = document.getElementById('trade-rr');
+  if (!isNaN(entry) && !isNaN(exit) && !isNaN(stop) && stop !== entry) {
+    rrEl.value = Math.abs((exit - entry) / (entry - stop)).toFixed(2);
+  } else {
+    rrEl.value = '';
+  }
+}
+
+// ── Journal form ──────────────────────────────────────────────────────────
+function setupJournalForm() {
+  document.getElementById('journal-form').addEventListener('submit', async e => {
+    e.preventDefault();
+
+    if (!btChannelId || !btStreamId) {
+      btShowToast('Select a stream first', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-save-trade');
+    btn.disabled = true;
+
+    // Capture current video timestamp automatically
+    let videoTimestamp = null;
+    try {
+      if (btPlayer && btPlayer.getCurrentTime) {
+        videoTimestamp = Math.floor(btPlayer.getCurrentTime());
+      }
+    } catch {}
+    const manualTs = document.getElementById('trade-timestamp').value;
+    if (manualTs !== '') videoTimestamp = parseInt(manualTs, 10);
+
+    const entry = {
+      direction:      document.getElementById('trade-direction').value,
+      result:         document.getElementById('trade-result').value,
+      entry:          parseFloat(document.getElementById('trade-entry').value) || null,
+      exit:           parseFloat(document.getElementById('trade-exit').value)  || null,
+      stop:           parseFloat(document.getElementById('trade-stop').value)  || null,
+      rr:             parseFloat(document.getElementById('trade-rr').value)    || null,
+      notes:          document.getElementById('trade-notes').value.trim(),
+      videoTimestamp,
+    };
+
+    try {
+      const res = await fetch('/.netlify/functions/journal', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          channelId:   btChannelId,
+          streamId:    btStreamId,
+          streamTitle: btStreamTitle,
+          entry,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      btShowToast('Trade saved', 'success');
+      document.getElementById('journal-form').reset();
+      await loadJournalEntries(btChannelId, btStreamId);
+      await loadChannelAnalytics(btChannelId);
+    } catch (err) {
+      btShowToast(`Save failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+// ── Journal entries ───────────────────────────────────────────────────────
+function clearJournal() {
+  document.getElementById('journal-entries').innerHTML = '';
+  document.getElementById('journal-status').textContent = 'No stream selected.';
+  document.getElementById('journal-status').style.display = '';
+  document.getElementById('journal-context').textContent = 'Load a stream before logging a trade.';
+}
+
+async function loadJournalEntries(channelId, streamId) {
+  const status    = document.getElementById('journal-status');
+  const container = document.getElementById('journal-entries');
+  status.textContent = 'Loading…';
+  status.style.display = '';
+  container.innerHTML  = '';
+
+  try {
+    const res     = await fetch(`/.netlify/functions/journal?channelId=${encodeURIComponent(channelId)}&streamId=${encodeURIComponent(streamId)}`);
+    const entries = await res.json();
+    if (!res.ok) throw new Error(entries.error || `HTTP ${res.status}`);
+
+    if (!entries.length) {
+      status.textContent = 'No trades logged for this stream yet.';
+      return;
+    }
+    status.style.display = 'none';
+    renderJournalEntries(entries, channelId, streamId);
+  } catch (err) {
+    status.textContent = `Error: ${err.message}`;
+  }
+}
+
+function renderJournalEntries(entries, channelId, streamId) {
+  const container = document.getElementById('journal-entries');
+  container.innerHTML = '';
+
+  // Show newest first
+  [...entries].reverse().forEach(e => {
+    const el  = document.createElement('div');
+    el.className  = `journal-entry result-${e.result}`;
+    const ts  = e.videoTimestamp != null ? ` @${fmtTime(e.videoTimestamp)}` : '';
+    el.innerHTML = `
+      <div class="je-header">
+        <span class="je-direction ${e.direction}">${e.direction.toUpperCase()}</span>
+        <span class="je-result ${e.result}">${e.result.toUpperCase()}</span>
+        ${e.rr   ? `<span class="je-rr">${e.rr}R</span>` : ''}
+        ${ts     ? `<span class="je-ts">${btEscHtml(ts)}</span>` : ''}
+        <button class="je-delete" title="Delete">&times;</button>
+      </div>
+      ${e.notes ? `<div class="je-notes">${btEscHtml(e.notes)}</div>` : ''}
+    `;
+    el.querySelector('.je-delete').addEventListener('click', () =>
+      deleteJournalEntry(channelId, streamId, e.id)
+    );
+    container.appendChild(el);
+  });
+}
+
+async function deleteJournalEntry(channelId, streamId, entryId) {
+  try {
+    const res = await fetch(
+      `/.netlify/functions/journal?channelId=${encodeURIComponent(channelId)}&streamId=${encodeURIComponent(streamId)}&entryId=${encodeURIComponent(entryId)}`,
+      { method: 'DELETE' }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    btShowToast('Entry deleted', 'info');
+    await loadJournalEntries(channelId, streamId);
+    await loadChannelAnalytics(channelId);
+  } catch (err) {
+    btShowToast(`Delete failed: ${err.message}`, 'error');
+  }
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────
+function clearAnalytics() {
+  document.getElementById('analytics-empty').style.display = '';
+  document.getElementById('analytics-empty').textContent = 'No trade data yet.';
+  document.getElementById('analytics-table-wrap').classList.add('hidden');
+}
+
+async function loadChannelAnalytics(channelId) {
+  // We only have the current stream's entries easily accessible without
+  // a separate index endpoint, so we show stats for the active stream.
+  // A full channel-wide view can be added once a /journal-index endpoint exists.
+  if (!btStreamId) return;
+
+  try {
+    const res     = await fetch(`/.netlify/functions/journal?channelId=${encodeURIComponent(channelId)}&streamId=${encodeURIComponent(btStreamId)}`);
+    const entries = await res.json();
+    if (!res.ok || !entries.length) { clearAnalytics(); return; }
+
+    const stats = computeStats(entries, btStreamTitle || btStreamId);
+    renderAnalyticsTable([stats]);
+  } catch {
+    clearAnalytics();
+  }
+}
+
+function computeStats(entries, label) {
+  const wins   = entries.filter(e => e.result === 'win').length;
+  const losses = entries.filter(e => e.result === 'loss').length;
+  const be     = entries.filter(e => e.result === 'be').length;
+  const total  = entries.length;
+  const rrVals = entries.map(e => e.rr).filter(v => v != null && !isNaN(v));
+  const avgRR  = rrVals.length ? (rrVals.reduce((a, b) => a + b, 0) / rrVals.length).toFixed(2) : '—';
+  return {
+    label,
+    total,
+    winRate: total ? `${Math.round((wins / total) * 100)}%` : '—',
+    avgRR,
+    wins,
+    losses,
+    be,
+  };
+}
+
+function renderAnalyticsTable(rows) {
+  const empty = document.getElementById('analytics-empty');
+  const wrap  = document.getElementById('analytics-table-wrap');
+  const tbody = document.querySelector('#analytics-table tbody');
+
+  empty.style.display = 'none';
+  wrap.classList.remove('hidden');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td title="${btEscAttr(r.label)}">${btEscHtml(truncate(r.label, 28))}</td>
+      <td>${r.total}</td>
+      <td>${r.winRate}</td>
+      <td>${r.avgRR}</td>
+      <td style="color:var(--accent)">${r.wins}</td>
+      <td style="color:var(--live-red)">${r.losses}</td>
+      <td style="color:#6080ff">${r.be}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function fmtTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function truncate(str, n) {
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function btEscHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function btEscAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
+}
+
+// Use the toast from app.js if available, otherwise log
+function btShowToast(msg, type = 'info') {
+  if (typeof showToast === 'function') {
+    showToast(msg, type);
+  } else {
+    console.log(`[${type}] ${msg}`);
+  }
+}

@@ -1,133 +1,103 @@
 /**
- * Netlify function — trade journal CRUD for backtest sessions
+ * Netlify function — trade journal CRUD via NeonDB
  *
  * GET    /.netlify/functions/journal?channelId=UC...&streamId=videoId
- * POST   /.netlify/functions/journal  { channelId, streamId, streamTitle, entry: {...} }
- * PATCH  /.netlify/functions/journal  { channelId, streamId, entryId, updates: {...} }
+ * POST   /.netlify/functions/journal  { channelId, streamId, streamTitle, entry }
+ * PATCH  /.netlify/functions/journal  { channelId, streamId, entryId, updates }
  * DELETE /.netlify/functions/journal?channelId=UC...&streamId=...&entryId=...
  */
 
-const { getStore } = require('@netlify/blobs');
+const { neon } = require('@neondatabase/serverless');
+
+async function getDb() {
+  const sql = neon(process.env.DATABASE_URL);
+  await sql`
+    CREATE TABLE IF NOT EXISTS dashboard_state (
+      key        TEXT PRIMARY KEY,
+      value      JSONB NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  return sql;
+}
+
+async function dbGet(sql, key) {
+  const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${key}`;
+  if (!rows.length) return [];
+  const val = rows[0].value;
+  return Array.isArray(val) ? val : [];
+}
+
+async function dbSet(sql, key, value) {
+  await sql`
+    INSERT INTO dashboard_state (key, value)
+    VALUES (${key}, ${JSON.stringify(value)}::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `;
+}
 
 exports.handler = async (event) => {
-  let store;
-  try {
-    store = getStore('dashboard');
-  } catch (err) {
-    console.error('[journal] getStore failed:', err.message);
-    return respond(500, { error: `Blob store unavailable: ${err.message}` });
+  if (!process.env.DATABASE_URL) {
+    return respond(500, { error: 'DATABASE_URL is not set' });
   }
 
-  const params = event.queryStringParameters || {};
-
   try {
+    const sql    = await getDb();
+    const params = event.queryStringParameters || {};
+
     if (event.httpMethod === 'GET') {
-      return await handleGet(store, params);
+      const { channelId, streamId } = params;
+      if (!channelId || !streamId) return respond(400, { error: 'channelId and streamId required' });
+      const entries = await dbGet(sql, `journal__${channelId}__${streamId}`);
+      return respond(200, entries);
     }
+
     if (event.httpMethod === 'POST') {
-      return await handlePost(store, event.body);
+      const body = JSON.parse(event.body || '{}');
+      const { channelId, streamId, streamTitle, entry } = body;
+      if (!channelId || !streamId || !entry) return respond(400, { error: 'channelId, streamId, entry required' });
+
+      const newEntry = { id: generateId(), ...entry, createdAt: new Date().toISOString() };
+      const entries  = await dbGet(sql, `journal__${channelId}__${streamId}`);
+      entries.push(newEntry);
+      await dbSet(sql, `journal__${channelId}__${streamId}`, entries);
+      await updateIndex(sql, channelId, streamId, streamTitle || streamId, entries.length);
+      return respond(200, { ok: true, id: newEntry.id });
     }
+
     if (event.httpMethod === 'PATCH') {
-      return await handlePatch(store, event.body);
+      const body = JSON.parse(event.body || '{}');
+      const { channelId, streamId, entryId, updates } = body;
+      if (!channelId || !streamId || !entryId || !updates) return respond(400, { error: 'channelId, streamId, entryId, updates required' });
+
+      const entries = await dbGet(sql, `journal__${channelId}__${streamId}`);
+      const idx = entries.findIndex(e => e.id === entryId);
+      if (idx === -1) return respond(404, { error: 'Entry not found' });
+      entries[idx] = { ...entries[idx], ...updates, id: entryId };
+      await dbSet(sql, `journal__${channelId}__${streamId}`, entries);
+      return respond(200, { ok: true });
     }
+
     if (event.httpMethod === 'DELETE') {
-      return await handleDelete(store, params);
+      const { channelId, streamId, entryId } = params;
+      if (!channelId || !streamId || !entryId) return respond(400, { error: 'channelId, streamId, entryId required' });
+
+      const entries  = await dbGet(sql, `journal__${channelId}__${streamId}`);
+      const filtered = entries.filter(e => e.id !== entryId);
+      await dbSet(sql, `journal__${channelId}__${streamId}`, filtered);
+      await updateIndex(sql, channelId, streamId, null, filtered.length);
+      return respond(200, { ok: true });
     }
+
     return respond(405, { error: 'Method not allowed' });
   } catch (err) {
-    console.error('[journal] unhandled error:', err.message);
+    console.error('[journal]', err.message);
     return respond(500, { error: err.message });
   }
 };
 
-// ── Handlers ──────────────────────────────────────────────────────────────
-
-async function handleGet(store, params) {
-  const { channelId, streamId } = params;
-  if (!channelId || !streamId) {
-    return respond(400, { error: 'channelId and streamId are required' });
-  }
-  const entries = await blobGet(store, blobKey(channelId, streamId));
-  return respond(200, entries);
-}
-
-async function handlePost(store, rawBody) {
-  let body;
-  try { body = JSON.parse(rawBody || '{}'); } catch {
-    return respond(400, { error: 'Invalid JSON body' });
-  }
-
-  const { channelId, streamId, streamTitle, entry } = body;
-  if (!channelId || !streamId || !entry) {
-    return respond(400, { error: 'channelId, streamId and entry are required' });
-  }
-
-  const newEntry = { id: generateId(), ...entry, createdAt: new Date().toISOString() };
-  const entries  = await blobGet(store, blobKey(channelId, streamId));
-  entries.push(newEntry);
-  await blobSet(store, blobKey(channelId, streamId), entries);
-  await updateIndex(store, channelId, streamId, streamTitle || streamId, entries.length);
-
-  return respond(200, { ok: true, id: newEntry.id });
-}
-
-async function handlePatch(store, rawBody) {
-  let body;
-  try { body = JSON.parse(rawBody || '{}'); } catch {
-    return respond(400, { error: 'Invalid JSON body' });
-  }
-
-  const { channelId, streamId, entryId, updates } = body;
-  if (!channelId || !streamId || !entryId || !updates) {
-    return respond(400, { error: 'channelId, streamId, entryId and updates are required' });
-  }
-
-  const entries = await blobGet(store, blobKey(channelId, streamId));
-  const idx = entries.findIndex(e => e.id === entryId);
-  if (idx === -1) return respond(404, { error: 'Entry not found' });
-
-  entries[idx] = { ...entries[idx], ...updates, id: entryId };
-  await blobSet(store, blobKey(channelId, streamId), entries);
-
-  return respond(200, { ok: true });
-}
-
-async function handleDelete(store, params) {
-  const { channelId, streamId, entryId } = params;
-  if (!channelId || !streamId || !entryId) {
-    return respond(400, { error: 'channelId, streamId and entryId are required' });
-  }
-
-  const entries  = await blobGet(store, blobKey(channelId, streamId));
-  const filtered = entries.filter(e => e.id !== entryId);
-  await blobSet(store, blobKey(channelId, streamId), filtered);
-  await updateIndex(store, channelId, streamId, null, filtered.length);
-
-  return respond(200, { ok: true });
-}
-
-// ── Blob helpers (always return safe defaults, never throw) ────────────────
-
-async function blobGet(store, key) {
-  try {
-    const raw = await store.get(key);            // returns string or null
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.warn(`[journal] blobGet(${key}) failed:`, err.message);
-    return [];
-  }
-}
-
-async function blobSet(store, key, value) {
-  await store.set(key, JSON.stringify(value));
-}
-
-async function updateIndex(store, channelId, streamId, streamTitle, entryCount) {
-  const key   = `journal-index__${channelId}`;
-  const index = await blobGet(store, key);        // already returns [] on error
-
+async function updateIndex(sql, channelId, streamId, streamTitle, entryCount) {
+  const index    = await dbGet(sql, `journal-index__${channelId}`);
   const existing = index.find(i => i.streamId === streamId);
   if (existing) {
     existing.entryCount = entryCount;
@@ -135,14 +105,7 @@ async function updateIndex(store, channelId, streamId, streamTitle, entryCount) 
   } else if (streamTitle) {
     index.unshift({ streamId, streamTitle, entryCount, date: new Date().toISOString() });
   }
-
-  await blobSet(store, key, index);
-}
-
-// ── Utils ─────────────────────────────────────────────────────────────────
-
-function blobKey(channelId, streamId) {
-  return `journal__${channelId}__${streamId}`;
+  await dbSet(sql, `journal-index__${channelId}`, index);
 }
 
 function generateId() {

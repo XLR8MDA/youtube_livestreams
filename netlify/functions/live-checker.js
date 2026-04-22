@@ -2,74 +2,86 @@
  * Netlify scheduled function — checks all saved channels every 2 minutes,
  * sends a Telegram notification for any channel that just went live.
  *
- * Schedule is set in netlify.toml:
- *   [functions."live-checker"]
- *     schedule = "*/2 * * * *"
- *
- * Required env vars:
- *   YOUTUBE_API_KEY      — same key used by youtube.js proxy
- *   TELEGRAM_BOT_TOKEN
- *   TELEGRAM_CHAT_ID
- *   URL                  — your Netlify site URL (auto-set by Netlify)
+ * Schedule: set in netlify.toml → [functions."live-checker"] schedule = "*/2 * * * *"
  */
 
-const { getStore } = require('@netlify/blobs');
+const { neon } = require('@neondatabase/serverless');
 
 const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
-const LIVE_STATE_KEY = 'live-state'; // blob key: { [channelId]: { isLive, videoId } }
+
+async function getDb() {
+  const sql = neon(process.env.DATABASE_URL);
+  await sql`
+    CREATE TABLE IF NOT EXISTS dashboard_state (
+      key        TEXT PRIMARY KEY,
+      value      JSONB NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  return sql;
+}
+
+async function dbGet(sql, key, fallback = null) {
+  try {
+    const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${key}`;
+    return rows.length ? rows[0].value : fallback;
+  } catch { return fallback; }
+}
+
+async function dbSet(sql, key, value) {
+  await sql`
+    INSERT INTO dashboard_state (key, value)
+    VALUES (${key}, ${JSON.stringify(value)}::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `;
+}
 
 exports.handler = async () => {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
-    console.error('[live-checker] YOUTUBE_API_KEY not set');
+  if (!apiKey || !process.env.DATABASE_URL) {
+    console.error('[live-checker] Missing env vars');
     return { statusCode: 500 };
   }
 
-  const store = getStore('dashboard');
-
-  // Load saved channels
-  const channels = await store.get('channels', { type: 'json' }).catch(() => []);
+  const sql      = await getDb();
+  const channels = await dbGet(sql, 'channels', []);
   if (!Array.isArray(channels) || channels.length === 0) {
     console.log('[live-checker] No channels saved');
     return { statusCode: 200 };
   }
 
-  // Load last known live state
-  const prevState = await store.get(LIVE_STATE_KEY, { type: 'json' }).catch(() => ({})) || {};
-
-  const newState = { ...prevState };
+  const prevState = await dbGet(sql, 'live-state', {}) || {};
+  const newState  = { ...prevState };
   const newlyLive = [];
 
-  // Step 1 — batch-check channels that had a known videoId (cheap: 1 quota unit)
-  const channelsWithVideo = channels.filter(c => prevState[c.channelId]?.videoId);
-  if (channelsWithVideo.length > 0) {
-    const ids = channelsWithVideo.map(c => prevState[c.channelId].videoId).join(',');
+  // Batch-check channels with a known videoId (1 quota unit)
+  const withVideo = channels.filter(c => prevState[c.channelId]?.videoId);
+  if (withVideo.length > 0) {
+    const ids = withVideo.map(c => prevState[c.channelId].videoId).join(',');
     const url = new URL(`${YT_API_BASE}/videos`);
-    url.searchParams.set('part', 'snippet,liveStreamingDetails');
+    url.searchParams.set('part', 'snippet');
     url.searchParams.set('id', ids);
     url.searchParams.set('key', apiKey);
-
     try {
-      const res = await fetch(url.toString());
+      const res  = await fetch(url.toString());
       const data = await res.json();
       const liveMap = new Map((data.items || []).map(item => [
         item.id,
         item.snippet?.liveBroadcastContent === 'live',
       ]));
-
-      for (const ch of channelsWithVideo) {
-        const videoId = prevState[ch.channelId].videoId;
+      for (const ch of withVideo) {
+        const videoId   = prevState[ch.channelId].videoId;
         const stillLive = liveMap.get(videoId) ?? false;
         newState[ch.channelId] = { isLive: stillLive, videoId: stillLive ? videoId : null };
       }
     } catch (err) {
-      console.warn('[live-checker] batch video check failed:', err.message);
+      console.warn('[live-checker] batch check failed:', err.message);
     }
   }
 
-  // Step 2 — search for channels with no known videoId (100 quota units each, but necessary)
-  const channelsWithoutVideo = channels.filter(c => !newState[c.channelId]?.videoId);
-  for (const ch of channelsWithoutVideo) {
+  // Search channels with no known videoId (100 quota units each)
+  const withoutVideo = channels.filter(c => !newState[c.channelId]?.videoId);
+  for (const ch of withoutVideo) {
     const url = new URL(`${YT_API_BASE}/search`);
     url.searchParams.set('part', 'id');
     url.searchParams.set('channelId', ch.channelId);
@@ -77,10 +89,9 @@ exports.handler = async () => {
     url.searchParams.set('type', 'video');
     url.searchParams.set('maxResults', '1');
     url.searchParams.set('key', apiKey);
-
     try {
-      const res = await fetch(url.toString());
-      const data = await res.json();
+      const res    = await fetch(url.toString());
+      const data   = await res.json();
       const videoId = data?.items?.[0]?.id?.videoId || null;
       newState[ch.channelId] = { isLive: !!videoId, videoId };
     } catch (err) {
@@ -88,51 +99,37 @@ exports.handler = async () => {
     }
   }
 
-  // Step 3 — find channels that just went live (not live before, live now)
+  // Notify for newly live channels
+  const dashboardUrl = process.env.URL || '';
   for (const ch of channels) {
-    const wasLive = prevState[ch.channelId]?.isLive ?? false;
+    const wasLive  = prevState[ch.channelId]?.isLive ?? false;
     const isNowLive = newState[ch.channelId]?.isLive ?? false;
-    if (!wasLive && isNowLive) {
-      newlyLive.push(ch);
-    }
+    if (!wasLive && isNowLive) newlyLive.push(ch);
   }
 
-  // Step 4 — send Telegram notifications
-  const dashboardUrl = process.env.URL || '';
   for (const ch of newlyLive) {
     try {
-      await sendTelegramNotification(ch.name || ch.handle || ch.channelId, dashboardUrl);
-      console.log(`[live-checker] Notified: ${ch.name} is live`);
+      await sendTelegram(ch.name || ch.handle || ch.channelId, dashboardUrl);
+      console.log(`[live-checker] Notified: ${ch.name}`);
     } catch (err) {
-      console.warn(`[live-checker] Notify failed for ${ch.name}:`, err.message);
+      console.warn(`[live-checker] notify failed for ${ch.name}:`, err.message);
     }
   }
 
-  // Step 5 — save updated live state
-  await store.set(LIVE_STATE_KEY, JSON.stringify(newState));
-
-  console.log(`[live-checker] Done — ${channels.length} channels checked, ${newlyLive.length} newly live`);
+  await dbSet(sql, 'live-state', newState);
+  console.log(`[live-checker] ${channels.length} checked, ${newlyLive.length} newly live`);
   return { statusCode: 200 };
 };
 
-async function sendTelegramNotification(channelName, dashboardUrl) {
+async function sendTelegram(channelName, dashboardUrl) {
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-
-  const text = `🔴 *${escMd(channelName)}* is LIVE\\!\n\n[Open Dashboard](${dashboardUrl})`;
-  const res = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text,
-        parse_mode: 'MarkdownV2',
-        disable_web_page_preview: false,
-      }),
-    }
-  );
+  const text = `🔴 *${escMd(channelName)}* is LIVE\\!\n\n[Open Dashboard](${dashboardUrl})\n${escMd(dashboardUrl)}`;
+  const res  = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: 'MarkdownV2' }),
+  });
   const data = await res.json();
   if (!data.ok) throw new Error(data.description);
 }

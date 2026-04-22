@@ -8,24 +8,176 @@
 </head>
 <body>
 
-  <!-- ── Toolbar ─────────────────────────────────────────────────────────── -->
   <header id="toolbar">
     <span id="app-title">TRADING STREAMS</span>
 
+    <nav id="tab-nav" aria-label="Dashboard tabs">
+      <button id="tab-live" class="tab-btn active" data-tab="live" type="button">Live</button>
+      <button id="tab-backtest" class="tab-btn" data-tab="backtest" type="button">Backtest</button>
+    </nav>
+
     <div id="toolbar-right">
-      <span id="live-count">— LIVE</span>
+      <span id="live-count">&mdash; LIVE</span>
       <button id="btn-sync" title="Sync all streams to live edge">&#9654;&#9654;</button>
       <button id="btn-refresh" title="Refresh live status">&#8635;</button>
       <button id="btn-manage" title="Manage channels">&#9881;</button>
     </div>
   </header>
 
-  <!-- ── Stream grid ─────────────────────────────────────────────────────── -->
   <main id="grid-container">
     <!-- .stream-cell divs injected by app.js -->
   </main>
 
-  <!-- ── Manage Channels Modal ───────────────────────────────────────────── -->
+  <section id="backtest-panel" class="hidden" aria-labelledby="tab-backtest">
+    <div class="backtest-shell">
+      <aside class="backtest-sidebar">
+        <div class="backtest-card">
+          <div class="panel-label">Channel</div>
+          <select id="backtest-channel-select" aria-label="Backtest channel">
+            <option value="">Select a channel</option>
+          </select>
+        </div>
+
+        <div class="backtest-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Past Streams</div>
+              <p id="streams-subtitle">Pick a channel to load completed livestreams.</p>
+            </div>
+            <button id="btn-load-more-streams" class="ghost-btn hidden" type="button">More</button>
+          </div>
+          <div id="stream-list-status" class="panel-status">No channel selected.</div>
+          <div id="backtest-stream-list" class="stream-list" aria-live="polite"></div>
+        </div>
+      </aside>
+
+      <div class="backtest-main">
+        <div class="backtest-card player-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Replay</div>
+              <h2 id="backtest-player-title">No stream selected</h2>
+            </div>
+            <div id="player-meta" class="player-meta"></div>
+          </div>
+          <div id="backtest-player-shell">
+            <div id="backtest-player-empty" class="empty-panel">
+              <div class="big-icon">&#9654;</div>
+              <p>Select a past stream to load it here.</p>
+            </div>
+            <div id="backtest-player-frame" class="hidden">
+              <div id="backtest-player"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="backtest-card analytics-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Analytics</div>
+              <p>Aggregated journal stats across saved entries.</p>
+            </div>
+          </div>
+          <div id="analytics-empty" class="panel-status">No trade data yet.</div>
+          <div id="analytics-table-wrap" class="hidden">
+            <table id="analytics-table">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th>Trades</th>
+                  <th>Win Rate</th>
+                  <th>Avg R:R</th>
+                  <th>Wins</th>
+                  <th>Losses</th>
+                  <th>BE</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <aside class="backtest-journal">
+        <div class="backtest-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Trade Journal</div>
+              <p id="journal-context">Load a stream before logging a trade.</p>
+            </div>
+          </div>
+
+          <form id="journal-form">
+            <div class="form-grid">
+              <label>
+                <span>Direction</span>
+                <select id="trade-direction" name="direction" required>
+                  <option value="long">Long</option>
+                  <option value="short">Short</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Result</span>
+                <select id="trade-result" name="result" required>
+                  <option value="win">Win</option>
+                  <option value="loss">Loss</option>
+                  <option value="be">BE</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Entry</span>
+                <input id="trade-entry" name="entry" type="number" step="any" required>
+              </label>
+
+              <label>
+                <span>Exit</span>
+                <input id="trade-exit" name="exit" type="number" step="any" required>
+              </label>
+
+              <label>
+                <span>Stop</span>
+                <input id="trade-stop" name="stop" type="number" step="any" required>
+              </label>
+
+              <label>
+                <span>R:R</span>
+                <input id="trade-rr" name="rr" type="number" step="0.01" readonly>
+              </label>
+
+              <label>
+                <span>Video Time</span>
+                <input id="trade-timestamp" name="videoTimestamp" type="number" min="0" step="1" placeholder="Auto from player">
+              </label>
+            </div>
+
+            <label class="notes-field">
+              <span>Notes</span>
+              <textarea id="trade-notes" name="notes" rows="4" placeholder="Why this setup worked or failed"></textarea>
+            </label>
+
+            <div class="form-actions">
+              <div id="rr-hint" class="field-hint">R:R auto-calculates from entry, exit, and stop.</div>
+              <button id="btn-save-trade" type="submit">Save Trade</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="backtest-card journal-entries-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Entries</div>
+              <p id="journal-entries-subtitle">Saved trades for the selected stream.</p>
+            </div>
+          </div>
+          <div id="journal-status" class="panel-status">No stream selected.</div>
+          <div id="journal-entries" class="journal-entries"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
   <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Manage Channels">
     <div id="modal">
       <div id="modal-header">
@@ -39,7 +191,7 @@
           <input id="api-key-input" type="password" placeholder="AIza...">
           <button id="btn-save-key">Save</button>
         </div>
-        <p class="hint">Get a free key at <strong>console.cloud.google.com</strong> → YouTube Data API v3</p>
+        <p class="hint">Get a free key at <strong>console.cloud.google.com</strong> &rarr; YouTube Data API v3</p>
       </div>
 
       <div id="channel-list-section">
@@ -60,11 +212,10 @@
     </div>
   </div>
 
-  <!-- ── Toast notifications ────────────────────────────────────────────── -->
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- Scripts: config must load before app -->
   <script src="config.js"></script>
   <script src="app.js"></script>
+  <script src="backtest.js"></script>
 </body>
 </html>

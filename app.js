@@ -1,5 +1,6 @@
 'use strict';
 
+
 // ── Constants ─────────────────────────────────────────────────────────────
 const LS_CHANNELS = 'tradingDashboard_channels';
 // LS_GRID_COLS removed — layout is now automatic

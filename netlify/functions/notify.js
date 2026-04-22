@@ -29,7 +29,8 @@ exports.handler = async (event) => {
   const { channelName, dashboardUrl } = body;
   if (!channelName) return respond(400, { error: 'channelName is required' });
 
-  const text = `🔴 *${escMd(channelName)}* is LIVE\\!\n\n[Open Dashboard](${dashboardUrl || ''})`;
+  const url  = dashboardUrl || '';
+  const text = `🔴 *${escMd(channelName)}* is LIVE\\!\n\n[Open Dashboard](${url})\n${escMd(url)}`;
 
   try {
     const res = await fetch(

@@ -22,3 +22,7 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Scheduled function — checks all channels every 2 minutes and notifies via Telegram
+[functions."live-checker"]
+  schedule = "*/2 * * * *"

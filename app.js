@@ -15,6 +15,9 @@ let gridCols = 1;  // computed automatically from live count
 let gridRows = 1;
 let fastPollTimer = null;
 let slowPollTimer = null;
+let syncTimer     = null;
+
+const LIVE_EDGE_THRESHOLD_S = 30; // auto-seek if more than 30s behind live edge
 let apiKey = '';
 let isRefreshing = false;
 
@@ -748,20 +751,39 @@ function startPolling() {
     await refreshAllChannels();
     buildGrid();
   }, slow);
+  syncTimer = setInterval(autoSyncLiveEdge, 60_000); // every 60s: nudge lagging streams to live edge
 }
 
 function stopPolling() {
   clearInterval(fastPollTimer);
   clearInterval(slowPollTimer);
+  clearInterval(syncTimer);
   fastPollTimer = null;
   slowPollTimer = null;
+  syncTimer     = null;
+}
+
+// Seek any player that has drifted more than LIVE_EDGE_THRESHOLD_S behind the live edge
+function autoSyncLiveEdge() {
+  for (const [, player] of playerMap) {
+    try {
+      const state    = player.getPlayerState();
+      const duration = player.getDuration();
+      const current  = player.getCurrentTime();
+      // State 1 = playing. Only nudge actively playing streams.
+      if (state === 1 && duration > 0 && (duration - current) > LIVE_EDGE_THRESHOLD_S) {
+        player.seekTo(duration, true);
+      }
+    } catch {}
+  }
 }
 
 function handleVisibilityChange() {
   if (document.hidden) {
     stopPolling();
   } else {
-    // Resume: do an immediate refresh then restart timers
+    // Tab came back into focus — sync to live edge immediately, then restart timers
+    autoSyncLiveEdge();
     checkLiveStatus().then(() => startPolling());
   }
 }

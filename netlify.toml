@@ -23,6 +23,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Scheduled function — checks all channels every 2 minutes and notifies via Telegram
+# Triggered every 5 min — self-throttles to 5 min (peak IST) or 30 min (off-peak)
 [functions."live-checker"]
-  schedule = "*/2 * * * *"
+  schedule = "*/5 * * * *"
+
+# Processes one ended stream per run — fetches transcript, runs Groq, writes to stream-log
+[functions."auto-analyze"]
+  schedule = "*/10 * * * *"

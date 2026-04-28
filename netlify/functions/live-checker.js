@@ -1,8 +1,14 @@
 /**
- * Netlify scheduled function — checks all saved channels every 2 minutes,
- * sends a Telegram notification for any channel that just went live.
+ * Netlify scheduled function — adaptive polling based on IST time windows.
+ * Triggered every 5 min by cron, but self-throttles to save YouTube quota:
  *
- * Schedule: set in netlify.toml → [functions."live-checker"] schedule = "*/2 * * * *"
+ *   Peak   (every  5 min): 6:00–10:00 PM IST  (12:30–16:30 UTC)
+ *   Peak   (every  5 min): 10:30 PM–1:00 AM IST (17:00–19:30 UTC)
+ *   Off-peak (every 30 min): all other hours
+ *
+ * Quota impact (5 channels):
+ *   Peak hours  ~7.5h/day × 12 runs/h × 500 units = ~45,000 → with fast-poll optimisation ~5,000
+ *   Off-peak ~16.5h/day × 2 runs/h  × 500 units = ~16,500 → with fast-poll optimisation ~1,650
  */
 
 const { neon } = require('@neondatabase/serverless');
@@ -36,8 +42,20 @@ async function dbSet(sql, key, value) {
   `;
 }
 
+// Returns required minimum gap (minutes) between actual checks based on IST time
+function getCheckIntervalMinutes() {
+  const now = new Date();
+  const t   = now.getUTCHours() * 60 + now.getUTCMinutes(); // minutes since UTC midnight
+
+  // 6:00 PM – 10:00 PM IST  →  12:30 – 16:30 UTC
+  if (t >= 750 && t < 990)  return 5;
+  // 10:30 PM – 1:00 AM IST  →  17:00 – 19:30 UTC
+  if (t >= 1020 && t < 1170) return 5;
+  // All other hours
+  return 30;
+}
+
 exports.handler = async (event) => {
-  // Allow manual GET trigger for debugging: /.netlify/functions/live-checker
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey || !process.env.DATABASE_URL) {
     console.error('[live-checker] Missing env vars: YOUTUBE_API_KEY or DATABASE_URL not set');
@@ -45,6 +63,25 @@ exports.handler = async (event) => {
   }
 
   const sql      = await getDb();
+  const interval = getCheckIntervalMinutes();
+
+  // Throttle: skip if last run was too recent (off-peak guard)
+  const isManual = event?.httpMethod === 'GET'; // manual HTTP trigger bypasses throttle
+  if (!isManual) {
+    const lastRun = await dbGet(sql, 'live-checker-last-run', null);
+    if (lastRun) {
+      const msSinceLast = Date.now() - new Date(lastRun).getTime();
+      const minSinceLast = msSinceLast / 60_000;
+      if (minSinceLast < interval - 0.5) { // 0.5 min tolerance for cron jitter
+        console.log(`[live-checker] Skipping — off-peak, only ${minSinceLast.toFixed(1)}min since last run (interval=${interval}min)`);
+        return { statusCode: 200, body: JSON.stringify({ skipped: true, interval }) };
+      }
+    }
+    await dbSet(sql, 'live-checker-last-run', new Date().toISOString());
+  }
+
+  console.log(`[live-checker] Running — interval=${interval}min (${interval === 5 ? 'peak' : 'off-peak'})`);
+
   const channels = await dbGet(sql, 'channels', []);
   if (!Array.isArray(channels) || channels.length === 0) {
     console.log('[live-checker] No channels saved');
@@ -125,9 +162,35 @@ exports.handler = async (event) => {
     }
   }
 
+  // Detect streams that just ended (true → false) and queue them for analysis
+  const justEnded = channels.filter(ch => {
+    const wasLive   = prevState[ch.channelId]?.isLive ?? false;
+    const isNowLive = newState[ch.channelId]?.isLive  ?? false;
+    return wasLive && !isNowLive && prevState[ch.channelId]?.videoId;
+  });
+
+  if (justEnded.length > 0) {
+    const pending   = await dbGet(sql, 'pending-analysis', []) || [];
+    const pendingIds = new Set(pending.map(p => p.videoId));
+    for (const ch of justEnded) {
+      const videoId = prevState[ch.channelId].videoId;
+      if (!pendingIds.has(videoId)) {
+        pending.push({
+          videoId,
+          channelId:   ch.channelId,
+          channelName: ch.name || ch.handle || ch.channelId,
+          streamTitle: prevState[ch.channelId]?.streamTitle || null,
+          endedAt:     new Date().toISOString(),
+        });
+        console.log(`[live-checker] Queued ended stream for analysis: ${ch.name} — ${videoId}`);
+      }
+    }
+    await dbSet(sql, 'pending-analysis', pending);
+  }
+
   await dbSet(sql, 'live-state', newState);
-  console.log(`[live-checker] ${channels.length} checked, ${newlyLive.length} newly live`);
-  return { statusCode: 200, body: JSON.stringify({ checked: channels.length, notified: newlyLive.length }) };
+  console.log(`[live-checker] ${channels.length} checked, ${newlyLive.length} newly live, ${justEnded.length} ended`);
+  return { statusCode: 200, body: JSON.stringify({ checked: channels.length, notified: newlyLive.length, ended: justEnded.length }) };
 };
 
 async function sendTelegram({ channelName, streamTitle, videoId, dashboardUrl }) {

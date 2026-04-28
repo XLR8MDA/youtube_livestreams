@@ -23,7 +23,12 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Server up —', len\\(d\\), 'channels loaded'\\)\")",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Server up —', len\\(d\\), 'channels'\\)\")",
       "Bash(npx kill-port:*)",
-      "Bash(python3 -c \"import sys,json; print\\('Server up —', len\\(json.load\\(sys.stdin\\)\\), 'channels'\\)\")"
+      "Bash(python3 -c \"import sys,json; print\\('Server up —', len\\(json.load\\(sys.stdin\\)\\), 'channels'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('stream-log OK — days in log:', len\\(d\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('pending-analysis OK —', len\\(d\\), 'items queued'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('server up' if d else 'empty'\\)\")",
+      "Bash(python3 -c \"import sys,json; print\\(json.dumps\\(json.load\\(sys.stdin\\), indent=2\\)\\)\")",
+      "Bash(node:*)"
     ]
   }
 }

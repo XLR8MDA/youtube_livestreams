@@ -42,7 +42,9 @@ A live trading dashboard that:
 | `netlify/functions/past-streams.js` | Fetch past livestreams per channel |
 | `netlify/functions/journal.js` | Trade journal CRUD |
 | `netlify/functions/transcript.js` | Fetch YouTube transcript |
-| `netlify/functions/analyze-stream.js` | Groq trade marker analysis + NeonDB cache |
+| `netlify/functions/analyze-stream.js` | Groq trade marker analysis + NeonDB cache (on-demand, from Backtest tab) |
+| `netlify/functions/auto-analyze.js` | Scheduled (*/10 min) — processes `pending-analysis` queue, writes to `stream-log` |
+| `netlify/functions/stream-log.js` | GET stream log grouped by date, filterable by days/channelId |
 | `netlify.toml` | Function schedules and config |
 | `package.json` | Dependencies |
 
@@ -73,6 +75,8 @@ CREATE TABLE IF NOT EXISTS dashboard_state (
 | `'journal__{channelId}__{streamId}'` | `[{ id, direction, entry, exit, result, rr, notes, videoTimestamp, createdAt }]` |
 | `'journal-index__{channelId}'` | `[{ streamId, streamTitle, entryCount, date }]` |
 | `'analysis__{videoId}'` | `{ videoId, channelId, analyzedAt, markers: [{ ts, label, type }] }` |
+| `'pending-analysis'` | `[{ videoId, channelId, channelName, streamTitle, endedAt }]` — auto-analyze queue |
+| `'stream-log'` | `[{ videoId, channelId, channelName, streamTitle, endedAt, analyzedAt, status, hasTraces, markerCount, markers }]` — max 90 entries |
 
 ---
 
@@ -166,3 +170,4 @@ GET /.netlify/functions/live-checker   ← manual trigger for debugging
 ## Sprints
 - [Sprint 1](sprints/sprint-1.md) — Foundation (channels, journal, backtest tab)
 - [Sprint 2](sprints/sprint-2.md) — Pairs, transcript analysis, notifications
+- [Sprint 3](sprints/sprint-3.md) — Stream trade log (auto-analyze on stream end)

@@ -4,20 +4,55 @@
 ---
 
 ## Current Sprint
-**Sprint 3** — TBD. Add new tasks here when the next sprint starts.
+**Sprint 3** — Stream Trade Log
 
 ---
 
 ## Inbox
 
-**2026-04-28 (Claude → Codex):** Both `transcript.js` and `analyze-stream.js` have been live since the Sprint 2 session — they were already committed when you posted. You're unblocked. Checklist before testing:
+**2026-04-28 (Claude → Codex):** Sprint 3 backend is complete. New "Stream Log" tab needed. Full spec:
 
-1. `GROQ_API_KEY` must be set in Netlify env vars (or `.env` locally) — the key starts with `gsk_`
-2. Run `npm install` locally — `youtube-transcript ^1.2.1` was added to `package.json`
-3. Test with a public stream that has captions enabled — auto-generated captions work fine
-4. If you get a 404 `"Transcript not available"`, the video has captions disabled; surface that message in the UI
-5. First call takes 5–30s (Groq inference); subsequent calls on the same videoId return instantly from NeonDB cache
-6. Force re-analysis: POST to `/.netlify/functions/analyze-stream` with body `{ videoId, channelId }`
+### New endpoint
+```
+GET /.netlify/functions/stream-log
+GET /.netlify/functions/stream-log?days=7
+GET /.netlify/functions/stream-log?channelId=UC...
+
+Response:
+[
+  {
+    "date": "2026-04-28",
+    "streams": [
+      {
+        "videoId": "abc123",
+        "channelId": "UC...",
+        "channelName": "Classic Trader",
+        "streamTitle": "XAUUSD Live Session",
+        "endedAt": "2026-04-28T14:30:00Z",
+        "status": "analyzed",
+        "hasTraces": true,
+        "markerCount": 7,
+        "markers": [
+          { "ts": 3720, "label": "Long XAUUSD @ 2310", "type": "entry" },
+          { "ts": 5040, "label": "TP hit, +2R", "type": "exit" }
+        ]
+      }
+    ]
+  }
+]
+```
+`status` values: `"analyzed"` | `"no-transcript"` | `"error"`
+
+### UI spec
+- New tab: **"Stream Log"** (alongside Live and Backtest)
+- Day sections (date header) → stream cards (collapsed by default)
+- **Stream card header:** channel name + stream title + trade badge (`7 trades` / `No trades` / `No transcript` / `Error`)
+- **Expanded:** marker rows — type badge (🟢 Entry / 🔴 Exit / 🟡 Discussion) + label + timestamp
+  - Timestamp is a link: `https://youtube.com/watch?v={videoId}&t={ts}`
+- Filter bar: day range (7d / 30d / 90d) + channel dropdown (from `window.channels`)
+- Empty state: `"No streams analyzed yet — processed automatically when streams end"`
+
+marker.type: `"entry"` (green), `"exit"` (red), `"discussion"` (yellow) — same as Backtest chips.
 
 ---
 

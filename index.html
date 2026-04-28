@@ -121,6 +121,22 @@
           </div>
 
           <form id="journal-form">
+            <div class="pair-row">
+              <label class="pair-label-text"><span>Pair / Symbol</span></label>
+              <div class="pair-input-group">
+                <select id="trade-pair" name="pair">
+                  <option value="">— Select pair —</option>
+                </select>
+                <button id="btn-add-trade-pair" class="ghost-btn" type="button" title="Add new pair">+</button>
+              </div>
+              <div id="trade-pair-add-row" class="pair-add-row hidden">
+                <input id="trade-pair-label-in" type="text" placeholder="Label e.g. EUR/GBP">
+                <input id="trade-pair-value-in" type="text" placeholder="Symbol e.g. EURGBP">
+                <button id="btn-confirm-trade-pair" class="ghost-btn" type="button">Add</button>
+                <button id="btn-cancel-trade-pair" class="ghost-btn" type="button">✕</button>
+              </div>
+            </div>
+
             <div class="form-grid">
               <label>
                 <span>Direction</span>

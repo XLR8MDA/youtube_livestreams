@@ -18,6 +18,7 @@ function initBacktest() {
   setupLoadMore();
   setupRRCalc();
   setupJournalForm();
+  setupJournalPairSelect();
   setupAnalyzeButton();
 }
 
@@ -46,7 +47,7 @@ function switchTab(tab) {
     if (el) el.style.display = isLive ? '' : 'none';
   });
 
-  if (isBacktest) populateChannelSelect();
+  if (isBacktest) { populateChannelSelect(); populatePairSelect(); }
   if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
 }
 
@@ -319,6 +320,64 @@ function getCurrentChannel() {
   return list.find(ch => ch.channelId === btChannelId) || null;
 }
 
+// ── Journal Pair Select ───────────────────────────────────────────────────
+function populatePairSelect() {
+  const sel  = document.getElementById('trade-pair');
+  const prev = sel.value;
+  const all  = [
+    ...(typeof DEFAULT_PAIRS !== 'undefined' ? DEFAULT_PAIRS : []),
+    ...(typeof customPairs   !== 'undefined' ? customPairs   : []),
+  ];
+  sel.innerHTML =
+    '<option value="">— Select pair —</option>' +
+    all.map(p => `<option value="${btEscAttr(p.value)}">${btEscHtml(p.label)}</option>`).join('');
+  if (prev) sel.value = prev;
+}
+
+function setupJournalPairSelect() {
+  const addBtn     = document.getElementById('btn-add-trade-pair');
+  const addRow     = document.getElementById('trade-pair-add-row');
+  const cancelBtn  = document.getElementById('btn-cancel-trade-pair');
+  const confirmBtn = document.getElementById('btn-confirm-trade-pair');
+  const labelIn    = document.getElementById('trade-pair-label-in');
+  const valueIn    = document.getElementById('trade-pair-value-in');
+
+  addBtn.addEventListener('click', () => {
+    addRow.classList.toggle('hidden');
+    if (!addRow.classList.contains('hidden')) labelIn.focus();
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    addRow.classList.add('hidden');
+    labelIn.value = '';
+    valueIn.value = '';
+  });
+
+  confirmBtn.addEventListener('click', async () => {
+    const label = labelIn.value.trim();
+    const value = valueIn.value.trim().toUpperCase();
+    if (!label || !value) { btShowToast('Enter both label and symbol', 'error'); return; }
+
+    if (typeof addCustomPair === 'function') {
+      await addCustomPair(label, value);
+    }
+
+    populatePairSelect();
+    document.getElementById('trade-pair').value = value;
+    addRow.classList.add('hidden');
+    labelIn.value = '';
+    valueIn.value = '';
+    btShowToast(`Pair "${label}" added`, 'success');
+  });
+
+  [labelIn, valueIn].forEach(el => {
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmBtn.click();
+      if (e.key === 'Escape') cancelBtn.click();
+    });
+  });
+}
+
 // ── R:R auto-calc ─────────────────────────────────────────────────────────
 function setupRRCalc() {
   ['trade-entry', 'trade-exit', 'trade-stop'].forEach(id => {
@@ -362,6 +421,7 @@ function setupJournalForm() {
     if (manualTs !== '') videoTimestamp = parseInt(manualTs, 10);
 
     const entry = {
+      pair:           document.getElementById('trade-pair').value.trim() || null,
       direction:      document.getElementById('trade-direction').value,
       result:         document.getElementById('trade-result').value,
       entry:          parseFloat(document.getElementById('trade-entry').value) || null,
@@ -440,6 +500,7 @@ function renderJournalEntries(entries, channelId, streamId) {
     const ts  = e.videoTimestamp != null ? ` @${fmtTime(e.videoTimestamp)}` : '';
     el.innerHTML = `
       <div class="je-header">
+        ${e.pair ? `<span class="je-pair">${btEscHtml(e.pair)}</span>` : ''}
         <span class="je-direction ${e.direction}">${e.direction.toUpperCase()}</span>
         <span class="je-result ${e.result}">${e.result.toUpperCase()}</span>
         ${e.rr   ? `<span class="je-rr">${e.rr}R</span>` : ''}

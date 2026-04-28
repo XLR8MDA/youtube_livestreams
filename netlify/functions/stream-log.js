@@ -1,5 +1,5 @@
 /**
- * Netlify function — stream trade log
+ * Netlify function — stream trade log (Relational)
  *
  * GET /.netlify/functions/stream-log
  *   Query params (all optional):
@@ -15,14 +15,39 @@ const { neon } = require('@neondatabase/serverless');
 
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure table exists (Phase 2)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS stream_log (
+      id            BIGSERIAL PRIMARY KEY,
+      video_id      TEXT NOT NULL UNIQUE,
+      channel_id    TEXT NOT NULL,
+      channel_name  TEXT,
+      stream_title  TEXT,
+      ended_at      TIMESTAMPTZ NOT NULL,
+      analyzed_at   TIMESTAMPTZ,
+      status        TEXT NOT NULL,
+      has_traces    BOOLEAN NOT NULL DEFAULT FALSE,
+      marker_count  INTEGER NOT NULL DEFAULT 0,
+      markers       JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
+}
+
+function mapToFrontend(row) {
+  return {
+    videoId: row.video_id,
+    channelId: row.channel_id,
+    channelName: row.channel_name,
+    streamTitle: row.stream_title,
+    endedAt: row.ended_at instanceof Date ? row.ended_at.toISOString() : row.ended_at,
+    analyzedAt: row.analyzed_at instanceof Date ? row.analyzed_at.toISOString() : row.analyzed_at,
+    status: row.status,
+    hasTraces: row.has_traces,
+    markerCount: row.marker_count,
+    markers: row.markers
+  };
 }
 
 exports.handler = async (event) => {
@@ -33,9 +58,10 @@ exports.handler = async (event) => {
     const params = event.queryStringParameters || {};
     const path   = event.path || '';
 
-    // Debug: pending queue
+    // Debug: pending queue (still from blob for now)
     if (path.endsWith('/pending')) {
-      const pending = await dbGet(sql, 'pending-analysis', []);
+      const rows = await sql`SELECT value FROM dashboard_state WHERE key = 'pending-analysis'`;
+      const pending = rows.length ? rows[0].value : [];
       return respond(200, pending);
     }
 
@@ -43,11 +69,25 @@ exports.handler = async (event) => {
     const channelId = params.channelId || null;
     const cutoff    = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    let log = await dbGet(sql, 'stream-log', []) || [];
-
-    // Filter by date and optional channel
-    log = log.filter(e => e.endedAt >= cutoff);
-    if (channelId) log = log.filter(e => e.channelId === channelId);
+    let query;
+    if (channelId) {
+      query = sql`
+        SELECT * FROM stream_log 
+        WHERE ended_at >= ${cutoff} AND channel_id = ${channelId}
+        ORDER BY ended_at DESC
+        LIMIT 90
+      `;
+    } else {
+      query = sql`
+        SELECT * FROM stream_log 
+        WHERE ended_at >= ${cutoff}
+        ORDER BY ended_at DESC
+        LIMIT 90
+      `;
+    }
+    
+    const rows = await query;
+    const log = rows.map(mapToFrontend);
 
     // Group by date (YYYY-MM-DD of endedAt)
     const byDate = new Map();
@@ -68,13 +108,6 @@ exports.handler = async (event) => {
     return respond(500, { error: err.message });
   }
 };
-
-async function dbGet(sql, key, fallback = null) {
-  try {
-    const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${key}`;
-    return rows.length ? rows[0].value : fallback;
-  } catch { return fallback; }
-}
 
 function respond(statusCode, body) {
   return {

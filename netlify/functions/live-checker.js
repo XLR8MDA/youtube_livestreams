@@ -1,14 +1,5 @@
 /**
- * Netlify scheduled function — adaptive polling based on IST time windows.
- * Triggered every 5 min by cron, but self-throttles to save YouTube quota:
- *
- *   Peak   (every  5 min): 6:00–10:00 PM IST  (12:30–16:30 UTC)
- *   Peak   (every  5 min): 10:30 PM–1:00 AM IST (17:00–19:30 UTC)
- *   Off-peak (every 30 min): all other hours
- *
- * Quota impact (5 channels):
- *   Peak hours  ~7.5h/day × 12 runs/h × 500 units = ~45,000 → with fast-poll optimisation ~5,000
- *   Off-peak ~16.5h/day × 2 runs/h  × 500 units = ~16,500 → with fast-poll optimisation ~1,650
+ * Netlify scheduled function — adaptive polling based on IST time windows. (Relational)
  */
 
 const { neon } = require('@neondatabase/serverless');
@@ -17,85 +8,84 @@ const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure tables exist (Phase 4)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS channels (
+      channel_id   TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      handle       TEXT,
+      pair         TEXT,
+      is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+      manual_video_id BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS live_state (
+      channel_id         TEXT PRIMARY KEY,
+      is_live            BOOLEAN NOT NULL DEFAULT FALSE,
+      last_video_id      TEXT,
+      stream_title       TEXT,
+      last_notified_at   TIMESTAMPTZ,
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
 }
 
-async function dbGet(sql, key, fallback = null) {
-  try {
-    const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${key}`;
-    return rows.length ? rows[0].value : fallback;
-  } catch { return fallback; }
-}
-
-async function dbSet(sql, key, value) {
-  await sql`
-    INSERT INTO dashboard_state (key, value)
-    VALUES (${key}, ${JSON.stringify(value)}::jsonb)
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-  `;
-}
-
-// Returns required minimum gap (minutes) between actual checks based on IST time
 function getCheckIntervalMinutes() {
   const now = new Date();
-  const t   = now.getUTCHours() * 60 + now.getUTCMinutes(); // minutes since UTC midnight
-
-  // 6:00 PM – 10:00 PM IST  →  12:30 – 16:30 UTC
+  const t   = now.getUTCHours() * 60 + now.getUTCMinutes();
   if (t >= 750 && t < 990)  return 5;
-  // 10:30 PM – 1:00 AM IST  →  17:00 – 19:30 UTC
   if (t >= 1020 && t < 1170) return 5;
-  // All other hours
   return 30;
 }
 
 exports.handler = async (event) => {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey || !process.env.DATABASE_URL) {
-    console.error('[live-checker] Missing env vars: YOUTUBE_API_KEY or DATABASE_URL not set');
-    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+    console.error('[live-checker] Missing env vars');
+    return { statusCode: 500 };
   }
 
   const sql      = await getDb();
   const interval = getCheckIntervalMinutes();
 
-  // Throttle: skip if last run was too recent (off-peak guard)
-  const isManual = event?.httpMethod === 'GET'; // manual HTTP trigger bypasses throttle
+  const isManual = event?.httpMethod === 'GET';
   if (!isManual) {
-    const lastRun = await dbGet(sql, 'live-checker-last-run', null);
+    const rows = await sql`SELECT value FROM dashboard_state WHERE key = 'live-checker-last-run'`;
+    const lastRun = rows.length ? rows[0].value : null;
     if (lastRun) {
       const msSinceLast = Date.now() - new Date(lastRun).getTime();
       const minSinceLast = msSinceLast / 60_000;
-      if (minSinceLast < interval - 0.5) { // 0.5 min tolerance for cron jitter
-        console.log(`[live-checker] Skipping — off-peak, only ${minSinceLast.toFixed(1)}min since last run (interval=${interval}min)`);
+      if (minSinceLast < interval - 0.5) {
+        console.log(`[live-checker] Skipping — off-peak, ${minSinceLast.toFixed(1)}min since last run`);
         return { statusCode: 200, body: JSON.stringify({ skipped: true, interval }) };
       }
     }
-    await dbSet(sql, 'live-checker-last-run', new Date().toISOString());
+    await sql`
+      INSERT INTO dashboard_state (key, value) VALUES ('live-checker-last-run', ${JSON.stringify(new Date().toISOString())}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
   }
 
-  console.log(`[live-checker] Running — interval=${interval}min (${interval === 5 ? 'peak' : 'off-peak'})`);
+  const channels = await sql`SELECT * FROM channels WHERE is_active = TRUE`;
+  if (channels.length === 0) return { statusCode: 200 };
 
-  const channels = await dbGet(sql, 'channels', []);
-  if (!Array.isArray(channels) || channels.length === 0) {
-    console.log('[live-checker] No channels saved');
-    return { statusCode: 200 };
+  const prevStateRows = await sql`SELECT * FROM live_state`;
+  const prevState = {};
+  for (const r of prevStateRows) {
+    prevState[r.channel_id] = { isLive: r.is_live, videoId: r.last_video_id, streamTitle: r.stream_title };
   }
-
-  const prevState = await dbGet(sql, 'live-state', {}) || {};
+  
   const newState  = { ...prevState };
   const newlyLive = [];
 
-  // Batch-check channels with a known videoId (1 quota unit)
-  const withVideo = channels.filter(c => prevState[c.channelId]?.videoId);
+  // Batch-check channels with a known videoId
+  const withVideo = channels.filter(c => prevState[c.channel_id]?.videoId);
   if (withVideo.length > 0) {
-    const ids = withVideo.map(c => prevState[c.channelId].videoId).join(',');
+    const ids = withVideo.map(c => prevState[c.channel_id].videoId).join(',');
     const url = new URL(`${YT_API_BASE}/videos`);
     url.searchParams.set('part', 'snippet');
     url.searchParams.set('id', ids);
@@ -108,21 +98,21 @@ exports.handler = async (event) => {
         item.snippet?.liveBroadcastContent === 'live',
       ]));
       for (const ch of withVideo) {
-        const videoId   = prevState[ch.channelId].videoId;
+        const videoId   = prevState[ch.channel_id].videoId;
         const stillLive = liveMap.get(videoId) ?? false;
-        newState[ch.channelId] = { isLive: stillLive, videoId: stillLive ? videoId : null };
+        newState[ch.channel_id] = { ...newState[ch.channel_id], isLive: stillLive, videoId: stillLive ? videoId : null };
       }
     } catch (err) {
       console.warn('[live-checker] batch check failed:', err.message);
     }
   }
 
-  // Search channels with no known videoId (100 quota units each)
-  const withoutVideo = channels.filter(c => !newState[c.channelId]?.videoId);
+  // Search channels with no known videoId
+  const withoutVideo = channels.filter(c => !newState[c.channel_id]?.videoId);
   for (const ch of withoutVideo) {
     const url = new URL(`${YT_API_BASE}/search`);
     url.searchParams.set('part', 'id,snippet');
-    url.searchParams.set('channelId', ch.channelId);
+    url.searchParams.set('channelId', ch.channel_id);
     url.searchParams.set('eventType', 'live');
     url.searchParams.set('type', 'video');
     url.searchParams.set('maxResults', '1');
@@ -133,72 +123,85 @@ exports.handler = async (event) => {
       const item    = data?.items?.[0];
       const videoId = item?.id?.videoId || null;
       const streamTitle = item?.snippet?.title || null;
-      newState[ch.channelId] = { isLive: !!videoId, videoId, streamTitle };
+      newState[ch.channel_id] = { isLive: !!videoId, videoId, streamTitle };
     } catch (err) {
       console.warn(`[live-checker] search failed for ${ch.name}:`, err.message);
     }
   }
 
-  // Notify for newly live channels
+  // Notify and Sync state
   const dashboardUrl = process.env.URL || '';
   for (const ch of channels) {
-    const wasLive   = prevState[ch.channelId]?.isLive ?? false;
-    const isNowLive = newState[ch.channelId]?.isLive ?? false;
+    const wasLive   = prevState[ch.channel_id]?.isLive ?? false;
+    const isNowLive = newState[ch.channel_id]?.isLive ?? false;
     if (!wasLive && isNowLive) newlyLive.push(ch);
+    
+    // Update live_state table
+    const s = newState[ch.channel_id];
+    await sql`
+      INSERT INTO live_state (channel_id, is_live, last_video_id, stream_title, last_notified_at, updated_at)
+      VALUES (
+        ${ch.channel_id},
+        ${s.isLive},
+        ${s.videoId},
+        ${s.streamTitle},
+        ${!wasLive && isNowLive ? new Date().toISOString() : (prevState[ch.channel_id]?.lastNotifiedAt || null)},
+        NOW()
+      )
+      ON CONFLICT (channel_id) DO UPDATE SET
+        is_live = EXCLUDED.is_live,
+        last_video_id = EXCLUDED.last_video_id,
+        stream_title = EXCLUDED.stream_title,
+        last_notified_at = EXCLUDED.last_notified_at,
+        updated_at = NOW()
+    `;
   }
 
   for (const ch of newlyLive) {
-    const state = newState[ch.channelId];
-    try {
-      await sendTelegram({
-        channelName:  ch.name || ch.handle || ch.channelId,
-        streamTitle:  state?.streamTitle || null,
-        videoId:      state?.videoId || null,
-        dashboardUrl,
-      });
-      console.log(`[live-checker] Notified: ${ch.name}`);
-    } catch (err) {
-      console.warn(`[live-checker] notify failed for ${ch.name}:`, err.message);
-    }
+    const state = newState[ch.channel_id];
+    await sendTelegram({
+      channelName: ch.name,
+      streamTitle: state?.streamTitle,
+      videoId: state?.videoId,
+      dashboardUrl,
+    }).catch(err => console.warn(`[live-checker] notify failed:`, err.message));
   }
 
-  // Detect streams that just ended (true → false) and queue them for analysis
+  // Detection of ended streams
   const justEnded = channels.filter(ch => {
-    const wasLive   = prevState[ch.channelId]?.isLive ?? false;
-    const isNowLive = newState[ch.channelId]?.isLive  ?? false;
-    return wasLive && !isNowLive && prevState[ch.channelId]?.videoId;
+    const wasLive   = prevState[ch.channel_id]?.isLive ?? false;
+    const isNowLive = newState[ch.channel_id]?.isLive  ?? false;
+    return wasLive && !isNowLive && prevState[ch.channel_id]?.videoId;
   });
 
   if (justEnded.length > 0) {
-    const pending   = await dbGet(sql, 'pending-analysis', []) || [];
+    const rows = await sql`SELECT value FROM dashboard_state WHERE key = 'pending-analysis'`;
+    const pending = rows.length ? rows[0].value : [];
     const pendingIds = new Set(pending.map(p => p.videoId));
     for (const ch of justEnded) {
-      const videoId = prevState[ch.channelId].videoId;
+      const videoId = prevState[ch.channel_id].videoId;
       if (!pendingIds.has(videoId)) {
         pending.push({
           videoId,
-          channelId:   ch.channelId,
-          channelName: ch.name || ch.handle || ch.channelId,
-          streamTitle: prevState[ch.channelId]?.streamTitle || null,
-          endedAt:     new Date().toISOString(),
+          channelId: ch.channel_id,
+          channelName: ch.name,
+          streamTitle: prevState[ch.channel_id]?.streamTitle,
+          endedAt: new Date().toISOString(),
         });
-        console.log(`[live-checker] Queued ended stream for analysis: ${ch.name} — ${videoId}`);
       }
     }
-    await dbSet(sql, 'pending-analysis', pending);
+    await sql`
+      INSERT INTO dashboard_state (key, value) VALUES ('pending-analysis', ${JSON.stringify(pending)}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
   }
 
-  await dbSet(sql, 'live-state', newState);
-  console.log(`[live-checker] ${channels.length} checked, ${newlyLive.length} newly live, ${justEnded.length} ended`);
   return { statusCode: 200, body: JSON.stringify({ checked: channels.length, notified: newlyLive.length, ended: justEnded.length }) };
 };
 
 async function sendTelegram({ channelName, streamTitle, videoId, dashboardUrl }) {
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.warn('[live-checker] Telegram not configured — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing');
-    return;
-  }
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   const videoUrl = videoId ? `https://youtube.com/watch?v=${videoId}` : null;
   const lines = [
     `🔴 *${escMd(channelName)}* is LIVE\\!`,
@@ -207,13 +210,11 @@ async function sendTelegram({ channelName, streamTitle, videoId, dashboardUrl })
     dashboardUrl ? `📊 [Open Dashboard](${dashboardUrl})` : null,
   ].filter(Boolean).join('\n');
 
-  const res  = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: lines, parse_mode: 'MarkdownV2' }),
   });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.description);
 }
 
 function escMd(str) {

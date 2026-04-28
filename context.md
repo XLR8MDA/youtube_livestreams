@@ -58,25 +58,86 @@ A live trading dashboard that:
 ---
 
 ## NeonDB Schema
-All data lives in a single `dashboard_state` table:
-```sql
-CREATE TABLE IF NOT EXISTS dashboard_state (
-  key        TEXT PRIMARY KEY,
-  value      JSONB NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
 
+### Relational Tables
+
+#### `channels`
+| Column | Type | Notes |
+|---|---|---|
+| `channel_id` | `TEXT` | PRIMARY KEY |
+| `name` | `TEXT` | NOT NULL |
+| `handle` | `TEXT` | |
+| `pair` | `TEXT` | Active currency pair |
+| `is_active` | `BOOLEAN` | Default TRUE |
+| `manual_video_id` | `BOOLEAN` | Skip auto-check if TRUE |
+| `created_at` | `TIMESTAMPTZ` | |
+| `updated_at` | `TIMESTAMPTZ` | |
+
+#### `custom_pairs`
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PRIMARY KEY |
+| `label` | `TEXT` | NOT NULL |
+| `value` | `TEXT` | UNIQUE |
+| `created_at` | `TIMESTAMPTZ` | |
+
+#### `journal_entries`
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `TEXT` | PRIMARY KEY |
+| `channel_id` | `TEXT` | |
+| `stream_id` | `TEXT` | videoId |
+| `stream_title` | `TEXT` | |
+| `pair` | `TEXT` | |
+| `direction` | `TEXT` | long/short |
+| `result` | `TEXT` | win/loss/be |
+| `entry_price` | `DOUBLE` | |
+| `exit_price` | `DOUBLE` | |
+| `stop_price` | `DOUBLE` | |
+| `rr` | `DOUBLE` | |
+| `notes` | `TEXT` | |
+| `video_timestamp`| `INTEGER` | Seconds |
+| `created_at` | `TIMESTAMPTZ` | |
+
+#### `stream_log`
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `BIGSERIAL` | PRIMARY KEY |
+| `video_id` | `TEXT` | UNIQUE |
+| `channel_id` | `TEXT` | |
+| `channel_name` | `TEXT` | |
+| `stream_title` | `TEXT` | |
+| `ended_at` | `TIMESTAMPTZ` | |
+| `analyzed_at` | `TIMESTAMPTZ` | |
+| `status` | `TEXT` | analyzed/error/etc |
+| `has_traces` | `BOOLEAN` | |
+| `marker_count` | `INTEGER` | |
+| `markers` | `JSONB` | Array of markers |
+
+#### `stream_analysis`
+| Column | Type | Notes |
+|---|---|---|
+| `video_id` | `TEXT` | PRIMARY KEY |
+| `channel_id` | `TEXT` | |
+| `markers` | `JSONB` | Array of markers |
+| `analyzed_at` | `TIMESTAMPTZ` | |
+
+#### `live_state`
+| Column | Type | Notes |
+|---|---|---|
+| `channel_id` | `TEXT` | PRIMARY KEY |
+| `is_live` | `BOOLEAN` | |
+| `last_video_id` | `TEXT` | |
+| `stream_title` | `TEXT` | |
+| `last_notified_at` | `TIMESTAMPTZ` | |
+| `updated_at` | `TIMESTAMPTZ` | |
+
+### Legacy Store (Flexible paylaods)
 | Key pattern | Contents |
 |---|---|
-| `'channels'` | `[{ channelId, name, handle, videoId, isLive, viewers, pair }]` |
-| `'custom-pairs'` | `[{ label, value }]` — global user-defined pairs |
-| `'live-state'` | `{ [channelId]: { isLive, videoId, streamTitle } }` — used by live-checker |
-| `'journal__{channelId}__{streamId}'` | `[{ id, direction, entry, exit, result, rr, notes, videoTimestamp, createdAt }]` |
-| `'journal-index__{channelId}'` | `[{ streamId, streamTitle, entryCount, date }]` |
-| `'analysis__{videoId}'` | `{ videoId, channelId, analyzedAt, markers: [{ ts, label, type }] }` |
-| `'pending-analysis'` | `[{ videoId, channelId, channelName, streamTitle, endedAt }]` — auto-analyze queue |
-| `'stream-log'` | `[{ videoId, channelId, channelName, streamTitle, endedAt, analyzedAt, status, hasTraces, markerCount, markers }]` — max 90 entries |
+| `'pending-analysis'` | `[{ videoId, channelId, channelName, streamTitle, endedAt }]` |
+| `'live-checker-last-run'` | `ISOString` |
+| `'journal-index__{channelId}'` | Legacy index for backward compatibility |
 
 ---
 

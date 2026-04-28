@@ -1,5 +1,5 @@
 /**
- * Netlify function — persistent channel storage via NeonDB
+ * Netlify function — persistent channel storage via NeonDB (Relational)
  *
  * GET  /.netlify/functions/channels   → returns channels array
  * POST /.netlify/functions/channels   → saves channels array (body: JSON array)
@@ -9,11 +9,17 @@ const { neon } = require('@neondatabase/serverless');
 
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure table exists (Phase 3)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS channels (
+      channel_id   TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      handle       TEXT,
+      pair         TEXT,
+      is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+      manual_video_id BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
@@ -28,19 +34,45 @@ exports.handler = async (event) => {
     const sql = await getDb();
 
     if (event.httpMethod === 'GET') {
-      const rows = await sql`SELECT value FROM dashboard_state WHERE key = 'channels'`;
-      const channels = rows.length ? rows[0].value : [];
-      return respond(200, Array.isArray(channels) ? channels : []);
+      const rows = await sql`SELECT * FROM channels WHERE is_active = TRUE ORDER BY name ASC`;
+      // Map to frontend expected shape
+      const channels = rows.map(r => ({
+        channelId: r.channel_id,
+        name: r.name,
+        handle: r.handle,
+        pair: r.pair,
+        manualVideoId: r.manual_video_id
+      }));
+      return respond(200, channels);
     }
 
     if (event.httpMethod === 'POST') {
-      const channels = JSON.parse(event.body || '[]');
-      if (!Array.isArray(channels)) return respond(400, { error: 'Body must be a JSON array' });
-      await sql`
-        INSERT INTO dashboard_state (key, value)
-        VALUES ('channels', ${JSON.stringify(channels)}::jsonb)
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-      `;
+      const incoming = JSON.parse(event.body || '[]');
+      if (!Array.isArray(incoming)) return respond(400, { error: 'Body must be a JSON array' });
+      
+      const incomingIds = incoming.map(c => c.channelId);
+      
+      // Remove those not in the incoming list (standard sync behavior for app.js)
+      if (incomingIds.length > 0) {
+        await sql`DELETE FROM channels WHERE channel_id != ALL(${incomingIds})`;
+      } else {
+        await sql`DELETE FROM channels`;
+      }
+      
+      // Upsert incoming
+      for (const ch of incoming) {
+        await sql`
+          INSERT INTO channels (channel_id, name, handle, pair, manual_video_id)
+          VALUES (${ch.channelId}, ${ch.name}, ${ch.handle || null}, ${ch.pair || null}, ${ch.manualVideoId || false})
+          ON CONFLICT (channel_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            handle = EXCLUDED.handle,
+            pair = EXCLUDED.pair,
+            manual_video_id = EXCLUDED.manual_video_id,
+            updated_at = NOW()
+        `;
+      }
+      
       return respond(200, { ok: true });
     }
 

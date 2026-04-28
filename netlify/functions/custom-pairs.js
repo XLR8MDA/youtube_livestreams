@@ -1,5 +1,5 @@
 /**
- * Netlify function — global custom currency pairs list
+ * Netlify function — global custom currency pairs list (Relational)
  *
  * GET    /.netlify/functions/custom-pairs               → returns pairs array
  * POST   /.netlify/functions/custom-pairs               → add { label, value }
@@ -8,31 +8,18 @@
 
 const { neon } = require('@neondatabase/serverless');
 
-const STATE_KEY = 'custom-pairs';
-
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure table exists (Phase 3)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS custom_pairs (
+      id           BIGSERIAL PRIMARY KEY,
+      label        TEXT NOT NULL,
+      value        TEXT NOT NULL UNIQUE,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
-}
-
-async function getPairs(sql) {
-  const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${STATE_KEY}`;
-  return Array.isArray(rows[0]?.value) ? rows[0].value : [];
-}
-
-async function savePairs(sql, pairs) {
-  await sql`
-    INSERT INTO dashboard_state (key, value)
-    VALUES (${STATE_KEY}, ${JSON.stringify(pairs)}::jsonb)
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-  `;
 }
 
 exports.handler = async (event) => {
@@ -42,26 +29,32 @@ exports.handler = async (event) => {
     const sql = await getDb();
 
     if (event.httpMethod === 'GET') {
-      return respond(200, await getPairs(sql));
+      const rows = await sql`SELECT label, value FROM custom_pairs ORDER BY label ASC`;
+      return respond(200, rows);
     }
 
     if (event.httpMethod === 'POST') {
       const { label, value } = JSON.parse(event.body || '{}');
       if (!label || !value) return respond(400, { error: 'label and value are required' });
-      const pairs = await getPairs(sql);
-      if (pairs.some(p => p.value === value)) return respond(200, { ok: true, pairs });
-      const updated = [...pairs, { label: String(label).slice(0, 40), value: String(value).slice(0, 20) }];
-      await savePairs(sql, updated);
-      return respond(200, { ok: true, pairs: updated });
+      
+      await sql`
+        INSERT INTO custom_pairs (label, value)
+        VALUES (${String(label).slice(0, 40)}, ${String(value).slice(0, 20).toUpperCase()})
+        ON CONFLICT (value) DO UPDATE SET label = EXCLUDED.label
+      `;
+      
+      const rows = await sql`SELECT label, value FROM custom_pairs ORDER BY label ASC`;
+      return respond(200, { ok: true, pairs: rows });
     }
 
     if (event.httpMethod === 'DELETE') {
       const val = event.queryStringParameters?.value;
       if (!val) return respond(400, { error: 'value query param required' });
-      const pairs = await getPairs(sql);
-      const updated = pairs.filter(p => p.value !== val);
-      await savePairs(sql, updated);
-      return respond(200, { ok: true, pairs: updated });
+      
+      await sql`DELETE FROM custom_pairs WHERE value = ${val.toUpperCase()}`;
+      
+      const rows = await sql`SELECT label, value FROM custom_pairs ORDER BY label ASC`;
+      return respond(200, { ok: true, pairs: rows });
     }
 
     return respond(405, { error: 'Method not allowed' });

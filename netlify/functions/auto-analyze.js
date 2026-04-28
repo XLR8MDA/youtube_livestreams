@@ -1,13 +1,13 @@
 /**
- * Netlify scheduled function — processes one pending stream analysis per run.
+ * Netlify scheduled function — processes one pending stream analysis per run. (Relational)
  *
  * Schedule: every 10 minutes (see netlify.toml)
  * Flow:
  *   1. Pop oldest item from `pending-analysis` queue in NeonDB
  *   2. Fetch YouTube transcript
  *   3. Run Groq keyword-filtered analysis
- *   4. Prepend result to `stream-log` (capped at 90 entries)
- *   5. Cache in `analysis__{videoId}` so the Backtest tab also benefits
+ *   4. Upsert result to `stream_log` table
+ *   5. Cache in `analysis__{videoId}` blob so the Backtest tab also benefits
  *   6. Send Telegram summary if trades were found
  *
  * Manual trigger: GET /.netlify/functions/auto-analyze
@@ -19,18 +19,27 @@ const { YoutubeTranscript } = require('youtube-transcript');
 const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const MAX_CHARS_PER_CHUNK = 12_000;
-const STREAM_LOG_MAX      = 90; // keep last 90 stream entries
 
 const TRADE_KEYWORDS = /\b(long|short|buy|sell|entry|exit|tp|sl|stop|target|take profit|stop loss|filled|triggered|close[d]?|trade|position|order|scalp|breakout|setup|level|price|pip|lot|size|risk|reward|r:r|rr|gold|xau|eur|gbp|jpy|btc|bitcoin|nas|dow|index|futures|forex|crypto|going in|got in|i'm in|we're in|just took|just entered|just exited|just closed)\b/i;
 
 // ── DB helpers ────────────────────────────────────────────────────────────
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure table exists (Phase 2)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS stream_log (
+      id            BIGSERIAL PRIMARY KEY,
+      video_id      TEXT NOT NULL UNIQUE,
+      channel_id    TEXT NOT NULL,
+      channel_name  TEXT,
+      stream_title  TEXT,
+      ended_at      TIMESTAMPTZ NOT NULL,
+      analyzed_at   TIMESTAMPTZ,
+      status        TEXT NOT NULL,
+      has_traces    BOOLEAN NOT NULL DEFAULT FALSE,
+      marker_count  INTEGER NOT NULL DEFAULT 0,
+      markers       JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
@@ -131,13 +140,14 @@ exports.handler = async () => {
     logEntry.markerCount = markers.length;
     logEntry.markers     = markers;
 
-    // Cache in analysis__{videoId} so Backtest tab benefits too
-    await dbSet(sql, `analysis__${item.videoId}`, {
-      videoId:     item.videoId,
-      channelId:   item.channelId,
-      analyzedAt:  logEntry.analyzedAt,
-      markers,
-    });
+    // Cache in stream_analysis table so Backtest tab benefits too
+    await sql`
+      INSERT INTO stream_analysis (video_id, channel_id, markers, analyzed_at)
+      VALUES (${item.videoId}, ${item.channelId}, ${JSON.stringify(markers)}::jsonb, NOW())
+      ON CONFLICT (video_id) DO UPDATE SET
+        markers = EXCLUDED.markers,
+        analyzed_at = NOW()
+    `;
 
     // Telegram summary if trades found
     if (markers.length > 0) {
@@ -158,17 +168,29 @@ exports.handler = async () => {
 
 // ── Stream log write ──────────────────────────────────────────────────────
 async function writeLogEntry(sql, entry) {
-  const log = await dbGet(sql, 'stream-log', []) || [];
-  // Replace if same videoId already exists (re-analysis)
-  const idx = log.findIndex(e => e.videoId === entry.videoId);
-  if (idx !== -1) {
-    log[idx] = entry;
-  } else {
-    log.unshift(entry); // newest first
-  }
-  // Cap at STREAM_LOG_MAX
-  if (log.length > STREAM_LOG_MAX) log.splice(STREAM_LOG_MAX);
-  await dbSet(sql, 'stream-log', log);
+  await sql`
+    INSERT INTO stream_log (
+      video_id, channel_id, channel_name, stream_title, ended_at,
+      analyzed_at, status, has_traces, marker_count, markers
+    ) VALUES (
+      ${entry.videoId},
+      ${entry.channelId},
+      ${entry.channelName},
+      ${entry.streamTitle},
+      ${entry.endedAt},
+      ${entry.analyzedAt},
+      ${entry.status},
+      ${entry.hasTraces},
+      ${entry.markerCount},
+      ${JSON.stringify(entry.markers)}::jsonb
+    )
+    ON CONFLICT (video_id) DO UPDATE SET
+      analyzed_at = EXCLUDED.analyzed_at,
+      status = EXCLUDED.status,
+      has_traces = EXCLUDED.has_traces,
+      marker_count = EXCLUDED.marker_count,
+      markers = EXCLUDED.markers
+  `;
 }
 
 // ── Groq call ─────────────────────────────────────────────────────────────

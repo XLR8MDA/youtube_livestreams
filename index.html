@@ -256,6 +256,33 @@
       <div id="stats-content" class="hidden">
         <div id="stats-cards" class="stats-cards"></div>
 
+        <div class="stats-grid" style="grid-template-columns: 1fr; margin-bottom: 24px;">
+          <section class="stats-card">
+            <div class="backtest-section-head">
+              <div>
+                <div class="panel-label">Quarterly Performance</div>
+                <p>Aggregate stats grouped by year and quarter.</p>
+              </div>
+            </div>
+            <div class="stats-table-wrap">
+              <table id="stats-quarter-table" class="stats-table">
+                <thead>
+                  <tr>
+                    <th>Quarter</th>
+                    <th>Trades</th>
+                    <th>Win Rate</th>
+                    <th>Avg R:R</th>
+                    <th style="color:var(--accent)">W</th>
+                    <th style="color:var(--live-red)">L</th>
+                    <th style="color:#6080ff">BE</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
         <div class="stats-grid">
           <section class="stats-card">
             <div class="backtest-section-head">

@@ -1,5 +1,5 @@
-# Sprint 4 â€” NeonDB Relational Migration
-**Status:** Planned  
+# Sprint 4 — NeonDB Relational Migration
+**Status:** Complete  
 **Date:** 2026-04-29
 
 ---

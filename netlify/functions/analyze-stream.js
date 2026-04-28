@@ -1,5 +1,5 @@
 /**
- * Netlify function — fetch transcript, run Groq analysis, return trade markers
+ * Netlify function — fetch transcript, run Groq analysis, return trade markers (Relational)
  *
  * GET  /.netlify/functions/analyze-stream?videoId=abc123&channelId=UC...
  *   → { cached: bool, markers: [{ ts, label, type }] }
@@ -15,39 +15,24 @@ const { YoutubeTranscript } = require('youtube-transcript');
 
 const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const MAX_CHARS_PER_CHUNK = 12_000; // Groq free tier: 12k TPM — keep each request well under
+const MAX_CHARS_PER_CHUNK = 12_000;
 
-// Pre-filter transcript to trading-relevant lines before sending to Groq.
-// Reduces token usage ~85% and improves marker accuracy by cutting noise.
 const TRADE_KEYWORDS = /\b(long|short|buy|sell|entry|exit|tp|sl|stop|target|take profit|stop loss|filled|triggered|close[d]?|trade|position|order|scalp|breakout|setup|level|price|pip|lot|size|risk|reward|r:r|rr|gold|xau|eur|gbp|jpy|btc|bitcoin|nas|dow|index|futures|forex|crypto|going in|got in|i'm in|we're in|just took|just entered|just exited|just closed)\b/i;
 
-// ── DB helpers ────────────────────────────────────────────────────────────
 async function getDb() {
   const sql = neon(process.env.DATABASE_URL);
+  // Ensure table exists (Phase 4)
   await sql`
-    CREATE TABLE IF NOT EXISTS dashboard_state (
-      key        TEXT PRIMARY KEY,
-      value      JSONB NOT NULL,
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS stream_analysis (
+      video_id      TEXT PRIMARY KEY,
+      channel_id    TEXT NOT NULL,
+      markers       JSONB NOT NULL,
+      analyzed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   return sql;
 }
 
-async function dbGet(sql, key) {
-  const rows = await sql`SELECT value FROM dashboard_state WHERE key = ${key}`;
-  return rows.length ? rows[0].value : null;
-}
-
-async function dbSet(sql, key, value) {
-  await sql`
-    INSERT INTO dashboard_state (key, value)
-    VALUES (${key}, ${JSON.stringify(value)}::jsonb)
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-  `;
-}
-
-// ── Handler ───────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (!process.env.DATABASE_URL) return respond(500, { error: 'DATABASE_URL not set' });
   if (!process.env.GROQ_API_KEY) return respond(500, { error: 'GROQ_API_KEY not set' });
@@ -60,15 +45,13 @@ exports.handler = async (event) => {
   const { videoId, channelId } = params;
   if (!videoId || !channelId) return respond(400, { error: 'videoId and channelId are required' });
 
-  const cacheKey = `analysis__${videoId}`;
-
   try {
     const sql = await getDb();
 
     // Return cached result unless forced re-analysis
     if (!isForce) {
-      const cached = await dbGet(sql, cacheKey);
-      if (cached) return respond(200, { cached: true, markers: cached.markers || [] });
+      const rows = await sql`SELECT markers FROM stream_analysis WHERE video_id = ${videoId}`;
+      if (rows.length) return respond(200, { cached: true, markers: rows[0].markers || [] });
     }
 
     // Fetch transcript
@@ -87,33 +70,31 @@ exports.handler = async (event) => {
       return respond(404, { error: 'Transcript is empty' });
     }
 
-    // Convert to compact timestamped lines: "[H:MM:SS] text"
     const allLines = raw.map(seg => {
       const secs = Math.round((seg.offset ?? 0) / 1000);
       return `[${formatTs(secs)}] ${seg.text.replace(/\s+/g, ' ').trim()}`;
     });
-
-    // Filter to trading-relevant lines — cuts token usage ~85% before sending to Groq
     const lines = allLines.filter(line => TRADE_KEYWORDS.test(line));
 
-    if (lines.length === 0) {
-      await dbSet(sql, cacheKey, { videoId, channelId, analyzedAt: new Date().toISOString(), markers: [] });
-      return respond(200, { cached: false, markers: [] });
+    let allMarkers = [];
+    if (lines.length > 0) {
+      const chunks = chunkLines(lines);
+      for (let i = 0; i < chunks.length; i++) {
+        if (i > 0) await sleep(2000);
+        const chunkMarkers = await analyzeChunk(chunks[i]);
+        allMarkers.push(...chunkMarkers);
+      }
+      allMarkers.sort((a, b) => a.ts - b.ts);
     }
 
-    // Split into chunks to stay under Groq free-tier 12k TPM limit
-    const chunks = chunkLines(lines);
-
-    // Small delay between chunks to respect the TPM limit
-    const allMarkers = [];
-    for (let i = 0; i < chunks.length; i++) {
-      if (i > 0) await sleep(2000);
-      const chunkMarkers = await analyzeChunk(chunks[i]);
-      allMarkers.push(...chunkMarkers);
-    }
-
-    allMarkers.sort((a, b) => a.ts - b.ts);
-    await dbSet(sql, cacheKey, { videoId, channelId, analyzedAt: new Date().toISOString(), markers: allMarkers });
+    await sql`
+      INSERT INTO stream_analysis (video_id, channel_id, markers, analyzed_at)
+      VALUES (${videoId}, ${channelId}, ${JSON.stringify(allMarkers)}::jsonb, NOW())
+      ON CONFLICT (video_id) DO UPDATE SET
+        markers = EXCLUDED.markers,
+        analyzed_at = NOW()
+    `;
+    
     return respond(200, { cached: false, markers: allMarkers });
 
   } catch (err) {
@@ -122,7 +103,6 @@ exports.handler = async (event) => {
   }
 };
 
-// ── Groq call ─────────────────────────────────────────────────────────────
 async function analyzeChunk(lines) {
   const systemPrompt = `You are a trading analysis assistant. You will receive a timestamped transcript from a trading live stream.
 Identify every moment where the streamer:
@@ -158,15 +138,11 @@ If nothing relevant is found, return an empty array: []`;
 
   const data    = await res.json();
   const content = data?.choices?.[0]?.message?.content?.trim() || '[]';
+  const clean   = content.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
-  const clean = content.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
   let markers;
-  try {
-    markers = JSON.parse(clean);
-  } catch {
-    console.warn('[analyze-stream] Groq returned non-JSON:', clean.slice(0, 300));
-    markers = [];
-  }
+  try { markers = JSON.parse(clean); }
+  catch { markers = []; }
 
   return markers
     .filter(m => m && typeof m.ts === 'number' && typeof m.label === 'string')
@@ -177,7 +153,6 @@ If nothing relevant is found, return an empty array: []`;
     }));
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
 function formatTs(secs) {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
@@ -189,13 +164,10 @@ function formatTs(secs) {
 
 function chunkLines(lines) {
   const chunks = [];
-  let current = [];
-  let len = 0;
+  let current = [], len = 0;
   for (const line of lines) {
     if (len + line.length + 1 > MAX_CHARS_PER_CHUNK && current.length > 0) {
-      chunks.push(current);
-      current = [];
-      len = 0;
+      chunks.push(current); current = []; len = 0;
     }
     current.push(line);
     len += line.length + 1;

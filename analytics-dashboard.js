@@ -29,6 +29,7 @@ async function loadStatsDashboard() {
     }
 
     renderStatsCards(data.totals || {});
+    renderStatsQuarters(Array.isArray(data.quarters) ? data.quarters : []);
     renderStatsChannels(Array.isArray(data.channels) ? data.channels : []);
     renderStatsPairs(Array.isArray(data.pairs) ? data.pairs : []);
     setStatsState('ready');
@@ -80,6 +81,28 @@ function renderStatsCards(totals) {
       <div class="stats-kpi-label">${esc(item.label)}</div>
       <div class="stats-kpi-value">${esc(String(item.value))}</div>
     </div>
+  `).join('');
+}
+
+function renderStatsQuarters(rows) {
+  const tbody = document.querySelector('#stats-quarter-table tbody');
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="stats-empty-cell">No quarterly data yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(row => `
+    <tr>
+      <td><strong>${esc(row.label)}</strong></td>
+      <td>${row.trades}</td>
+      <td>${fmtPct(row.winRate)}</td>
+      <td>${fmtRR(row.avgRR)}</td>
+      <td class="stats-win">${row.wins}</td>
+      <td class="stats-loss">${row.losses}</td>
+      <td class="stats-be">${row.be}</td>
+    </tr>
   `).join('');
 }
 

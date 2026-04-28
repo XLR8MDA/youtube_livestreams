@@ -32,6 +32,7 @@ function setupTabs() {
 function switchTab(tab) {
   const isLive      = tab === 'live';
   const isBacktest  = tab === 'backtest';
+  const isStats     = tab === 'stats';
   const isStreamLog = tab === 'stream-log';
 
   document.querySelectorAll('.tab-btn').forEach(b =>
@@ -39,6 +40,7 @@ function switchTab(tab) {
   );
   document.getElementById('grid-container').classList.toggle('hidden', !isLive);
   document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
+  document.getElementById('stats-panel').classList.toggle('hidden', !isStats);
   document.getElementById('stream-log-panel').classList.toggle('hidden', !isStreamLog);
 
   // Hide live-only toolbar buttons when not on live tab
@@ -48,6 +50,7 @@ function switchTab(tab) {
   });
 
   if (isBacktest) { populateChannelSelect(); populatePairSelect(); }
+  if (isStats && typeof onStatsTabActivated === 'function') onStatsTabActivated();
   if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
 }
 

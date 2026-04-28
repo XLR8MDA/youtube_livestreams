@@ -17,6 +17,7 @@
     <nav id="tab-nav" aria-label="Dashboard tabs">
       <button id="tab-live" class="tab-btn active" data-tab="live" type="button">Live</button>
       <button id="tab-backtest" class="tab-btn" data-tab="backtest" type="button">Backtest</button>
+      <button id="tab-stats" class="tab-btn" data-tab="stats" type="button">Stats</button>
       <button id="tab-stream-log" class="tab-btn" data-tab="stream-log" type="button">Stream Log</button>
     </nav>
 
@@ -237,6 +238,80 @@
     </div>
   </section>
 
+  <section id="stats-panel" class="hidden" aria-labelledby="tab-stats">
+    <div class="stats-shell">
+      <header class="stats-header">
+        <div>
+          <div class="panel-label">Performance Dashboard</div>
+          <p class="stats-subtitle">All logged trades across every tracked channel.</p>
+        </div>
+        <button id="btn-stats-refresh" class="ghost-btn" type="button">&#8635; Refresh</button>
+      </header>
+
+      <div id="stats-status" class="stats-status">
+        <div class="big-icon">&#128200;</div>
+        <p>Loading performance data&hellip;</p>
+      </div>
+
+      <div id="stats-content" class="hidden">
+        <div id="stats-cards" class="stats-cards"></div>
+
+        <div class="stats-grid">
+          <section class="stats-card">
+            <div class="backtest-section-head">
+              <div>
+                <div class="panel-label">Channels</div>
+                <p>Per-channel win rate, R:R, and trade volume.</p>
+              </div>
+            </div>
+            <div class="stats-table-wrap">
+              <table id="stats-channel-table" class="stats-table">
+                <thead>
+                  <tr>
+                    <th>Channel</th>
+                    <th>Trades</th>
+                    <th>Win Rate</th>
+                    <th>Avg R:R</th>
+                    <th>Wins</th>
+                    <th>Losses</th>
+                    <th>BE</th>
+                    <th>Pairs</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="stats-card">
+            <div class="backtest-section-head">
+              <div>
+                <div class="panel-label">Pairs</div>
+                <p>How each market is performing in your journal.</p>
+              </div>
+            </div>
+            <div class="stats-table-wrap">
+              <table id="stats-pair-table" class="stats-table">
+                <thead>
+                  <tr>
+                    <th>Pair</th>
+                    <th>Trades</th>
+                    <th>Win Rate</th>
+                    <th>Avg R:R</th>
+                    <th>Wins</th>
+                    <th>Losses</th>
+                    <th>BE</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Manage Channels">
     <div id="modal">
       <div id="modal-header">
@@ -276,6 +351,7 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="backtest.js"></script>
+  <script src="analytics-dashboard.js"></script>
   <script src="stream-log-ui.js"></script>
 </body>
 </html>

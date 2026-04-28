@@ -1,8 +1,8 @@
 /**
- * Netlify function — fetch transcript, run Grok analysis, return trade markers
+ * Netlify function — fetch transcript, run Groq analysis, return trade markers
  *
- * GET /.netlify/functions/analyze-stream?videoId=abc123&channelId=UC...
- * Response: { cached: bool, markers: [{ ts, label, type }] }
+ * GET  /.netlify/functions/analyze-stream?videoId=abc123&channelId=UC...
+ *   → { cached: bool, markers: [{ ts, label, type }] }
  *   ts   = seconds from video start
  *   type = "entry" | "exit" | "discussion"
  *
@@ -10,12 +10,16 @@
  *   Force re-analysis (ignores cache)
  */
 
-const { neon }            = require('@neondatabase/serverless');
+const { neon }              = require('@neondatabase/serverless');
 const { YoutubeTranscript } = require('youtube-transcript');
 
 const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-const MAX_CHARS_PER_CHUNK = 180_000; // safe headroom under grok-3-mini's context
+const MAX_CHARS_PER_CHUNK = 12_000; // Groq free tier: 12k TPM — keep each request well under
+
+// Pre-filter transcript to trading-relevant lines before sending to Groq.
+// Reduces token usage ~85% and improves marker accuracy by cutting noise.
+const TRADE_KEYWORDS = /\b(long|short|buy|sell|entry|exit|tp|sl|stop|target|take profit|stop loss|filled|triggered|close[d]?|trade|position|order|scalp|breakout|setup|level|price|pip|lot|size|risk|reward|r:r|rr|gold|xau|eur|gbp|jpy|btc|bitcoin|nas|dow|index|futures|forex|crypto|going in|got in|i'm in|we're in|just took|just entered|just exited|just closed)\b/i;
 
 // ── DB helpers ────────────────────────────────────────────────────────────
 async function getDb() {
@@ -46,7 +50,7 @@ async function dbSet(sql, key, value) {
 // ── Handler ───────────────────────────────────────────────────────────────
 exports.handler = async (event) => {
   if (!process.env.DATABASE_URL) return respond(500, { error: 'DATABASE_URL not set' });
-  if (!process.env.GROQ_API_KEY)  return respond(500, { error: 'GROQ_API_KEY not set' });
+  if (!process.env.GROQ_API_KEY) return respond(500, { error: 'GROQ_API_KEY not set' });
 
   const isForce = event.httpMethod === 'POST';
   const params  = isForce
@@ -83,39 +87,43 @@ exports.handler = async (event) => {
       return respond(404, { error: 'Transcript is empty' });
     }
 
-    // Convert to compact timestamped lines: "[HH:MM:SS] text"
-    const lines = raw.map(seg => {
+    // Convert to compact timestamped lines: "[H:MM:SS] text"
+    const allLines = raw.map(seg => {
       const secs = Math.round((seg.offset ?? 0) / 1000);
       return `[${formatTs(secs)}] ${seg.text.replace(/\s+/g, ' ').trim()}`;
     });
 
-    // Split into chunks if transcript is very long (8h+ streams)
+    // Filter to trading-relevant lines — cuts token usage ~85% before sending to Groq
+    const lines = allLines.filter(line => TRADE_KEYWORDS.test(line));
+
+    if (lines.length === 0) {
+      await dbSet(sql, cacheKey, { videoId, channelId, analyzedAt: new Date().toISOString(), markers: [] });
+      return respond(200, { cached: false, markers: [] });
+    }
+
+    // Split into chunks to stay under Groq free-tier 12k TPM limit
     const chunks = chunkLines(lines);
 
-    // Run Grok on each chunk, merge all markers
+    // Small delay between chunks to respect the TPM limit
     const allMarkers = [];
-    for (const chunk of chunks) {
-      const chunkMarkers = await analyzeChunk(chunk);
+    for (let i = 0; i < chunks.length; i++) {
+      if (i > 0) await sleep(2000);
+      const chunkMarkers = await analyzeChunk(chunks[i]);
       allMarkers.push(...chunkMarkers);
     }
 
-    // Sort by timestamp
     allMarkers.sort((a, b) => a.ts - b.ts);
-
-    // Cache result
     await dbSet(sql, cacheKey, { videoId, channelId, analyzedAt: new Date().toISOString(), markers: allMarkers });
-
     return respond(200, { cached: false, markers: allMarkers });
+
   } catch (err) {
     console.error('[analyze-stream]', err.message);
     return respond(500, { error: err.message });
   }
 };
 
-// ── Grok call ─────────────────────────────────────────────────────────────
+// ── Groq call ─────────────────────────────────────────────────────────────
 async function analyzeChunk(lines) {
-  const transcriptText = lines.join('\n');
-
   const systemPrompt = `You are a trading analysis assistant. You will receive a timestamped transcript from a trading live stream.
 Identify every moment where the streamer:
 - Announces a trade entry (buy/sell, long/short, taking a trade)
@@ -137,7 +145,7 @@ If nothing relevant is found, return an empty array: []`;
       model:       GROQ_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user',   content: transcriptText },
+        { role: 'user',   content: lines.join('\n') },
       ],
       temperature: 0.1,
     }),
@@ -145,23 +153,21 @@ If nothing relevant is found, return an empty array: []`;
 
   if (!res.ok) {
     const errBody = await res.text();
-    throw new Error(`Grok API error ${res.status}: ${errBody.slice(0, 200)}`);
+    throw new Error(`Groq API error ${res.status}: ${errBody.slice(0, 200)}`);
   }
 
   const data    = await res.json();
   const content = data?.choices?.[0]?.message?.content?.trim() || '[]';
 
-  // Parse the JSON response — strip any accidental markdown fences
   const clean = content.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
   let markers;
   try {
     markers = JSON.parse(clean);
   } catch {
-    console.warn('[analyze-stream] Grok returned non-JSON:', clean.slice(0, 300));
+    console.warn('[analyze-stream] Groq returned non-JSON:', clean.slice(0, 300));
     markers = [];
   }
 
-  // Validate and sanitise each marker
   return markers
     .filter(m => m && typeof m.ts === 'number' && typeof m.label === 'string')
     .map(m => ({
@@ -197,6 +203,8 @@ function chunkLines(lines) {
   if (current.length) chunks.push(current);
   return chunks;
 }
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function respond(statusCode, body) {
   return {

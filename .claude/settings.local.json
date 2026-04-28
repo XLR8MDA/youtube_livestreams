@@ -9,7 +9,21 @@
       "Bash(git commit -m ':*)",
       "Bash(git push:*)",
       "Bash(curl:*)",
-      "WebFetch(domain:xlr8090multiplay.netlify.app)"
+      "WebFetch(domain:xlr8090multiplay.netlify.app)",
+      "Bash(npm install:*)",
+      "Bash(npx netlify-cli:*)",
+      "Bash(npm list:*)",
+      "Bash(netlify --version)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(npx netlify:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); streams=d.get\\('streams',[]\\); print\\(json.dumps\\(streams[0] if streams else {}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('cached:', d.get\\('cached'\\)\\); markers=d.get\\('markers',[]\\); print\\(f'{len\\(markers\\)} markers found'\\); [print\\(f'  [{m[\\\\\"type\\\\\"]:10}] {m[\\\\\"ts\\\\\"]:>6}s — {m[\\\\\"label\\\\\"]}'\\) for m in markers[:15]]\")",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('cached:', d.get\\('cached'\\), '| markers:', len\\(d.get\\('markers', []\\)\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Server up —', len\\(d\\), 'channels loaded'\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Server up —', len\\(d\\), 'channels'\\)\")",
+      "Bash(npx kill-port:*)",
+      "Bash(python3 -c \"import sys,json; print\\('Server up —', len\\(json.load\\(sys.stdin\\)\\), 'channels'\\)\")"
     ]
   }
 }

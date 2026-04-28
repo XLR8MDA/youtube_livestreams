@@ -147,7 +147,7 @@ GET /.netlify/functions/live-checker   ← manual trigger for debugging
 | `TELEGRAM_BOT_TOKEN` | `notify.js`, `live-checker.js` | Telegram Bot API token |
 | `TELEGRAM_CHAT_ID` | `notify.js`, `live-checker.js` | Target chat/channel ID |
 | `DATABASE_URL` | All Netlify functions | NeonDB PostgreSQL connection string |
-| `GROQ_API_KEY` | `analyze-stream.js` | Groq inference API — `llama-3.3-70b-versatile` |
+| `GROQ_API_KEY` | `analyze-stream.js` | Groq inference API — `llama-3.3-70b-versatile` (12k TPM free tier, chunked) |
 | `URL` | `live-checker.js` | Auto-set by Netlify — dashboard URL included in notifications |
 
 ---

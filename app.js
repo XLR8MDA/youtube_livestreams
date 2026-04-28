@@ -32,6 +32,7 @@ let gridRows = 1;
 let fastPollTimer = null;
 let slowPollTimer = null;
 let syncTimer     = null;
+let localYoutubeProxyAvailable = false;
 
 const LIVE_EDGE_THRESHOLD_S = 30; // auto-seek if more than 30s behind live edge
 let apiKey = '';
@@ -43,6 +44,7 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
   await loadState();
   await loadCustomPairs();
+  await detectLocalYoutubeProxy();
   requestNotificationPermission();
   setupToolbar();
   setupModal();
@@ -64,7 +66,7 @@ async function loadState() {
         const remote = await res.json();
         if (Array.isArray(remote) && remote.length > 0) {
           // Remote has data — use it as source of truth
-          channels = remote;
+          channels = normaliseLoadedChannels(remote);
           localStorage.setItem(LS_CHANNELS, JSON.stringify(channels));
           return;
         }
@@ -72,7 +74,7 @@ async function loadState() {
         let local = [];
         try { local = JSON.parse(localStorage.getItem(LS_CHANNELS) || '[]'); } catch {}
         if (local.length > 0) {
-          channels = local;
+          channels = normaliseLoadedChannels(local);
           saveChannels(); // uploads to remote
           return;
         }
@@ -98,8 +100,19 @@ async function loadState() {
       saved.push({ ...def, videoId: null, isLive: false, viewers: 0 });
     }
   }
-  channels = saved;
+  channels = normaliseLoadedChannels(saved);
   saveChannels();
+}
+
+function normaliseLoadedChannels(list) {
+  return (Array.isArray(list) ? list : []).map(ch => ({
+    ...ch,
+    // Live status is volatile runtime state. Never trust persisted values on boot.
+    videoId: null,
+    isLive: false,
+    viewers: 0,
+    paused: false,
+  }));
 }
 
 function saveChannels() {
@@ -212,10 +225,27 @@ function injectYouTubeAPI() {
 
 const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
+async function detectLocalYoutubeProxy() {
+  if (!isLocalHost) {
+    localYoutubeProxyAvailable = true;
+    return;
+  }
+
+  try {
+    const res = await fetch('/.netlify/functions/youtube');
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    localYoutubeProxyAvailable = !!data?.keyPresent;
+  } catch {
+    localYoutubeProxyAvailable = false;
+  }
+}
+
 // Returns true if API calls will work — either a local key is set,
 // or we're on a deployed host where the serverless proxy provides the key.
 function hasApiAccess() {
   if (!isLocalHost) return true; // Netlify function handles the key server-side
+  if (localYoutubeProxyAvailable) return true; // netlify dev + .env
   return !!(apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE' && apiKey !== '');
 }
 
@@ -242,7 +272,7 @@ async function initDashboard() {
 async function apiFetch(endpoint, params) {
   let url;
 
-  if (isLocalHost && apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE') {
+  if (isLocalHost && !localYoutubeProxyAvailable && apiKey && apiKey !== 'YOUR_GOOGLE_API_KEY_HERE') {
     // Local dev: call YouTube API directly with the stored key
     url = new URL(`${YT_API_BASE}/${endpoint}`);
     params.key = apiKey;
@@ -436,6 +466,9 @@ function createStreamCell(ch) {
   cell.className = 'stream-cell';
   cell.dataset.channelId = ch.channelId;
 
+  const accent = document.createElement('div');
+  accent.className = 'cell-accent';
+
   const overlay = document.createElement('div');
   overlay.className = 'stream-overlay';
 
@@ -469,6 +502,7 @@ function createStreamCell(ch) {
   footer.appendChild(pauseBtn);
   overlay.appendChild(header);
   overlay.appendChild(footer);
+  cell.appendChild(accent);
   cell.appendChild(overlay);
 
   return cell;
@@ -935,9 +969,10 @@ function setupModal() {
 
 function openModal() {
   renderChannelList();
-  // Hide the API key section when deployed (key lives in env var, not browser)
-  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  document.getElementById('api-key-section').style.display = isLocal ? '' : 'none';
+  // Hide the API key section when the server-side proxy is available.
+  // On localhost without `netlify dev`, keep the manual browser key fallback visible.
+  document.getElementById('api-key-section').style.display =
+    (isLocalHost && !localYoutubeProxyAvailable) ? '' : 'none';
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
 
@@ -953,12 +988,6 @@ function renderChannelList() {
     return;
   }
 
-  const allPairs = [...DEFAULT_PAIRS, ...customPairs];
-  const pairOptions = [
-    '<option value="">— Select pair —</option>',
-    ...allPairs.map(p => `<option value="${escAttr(p.value)}">${escHtml(p.label)}</option>`),
-  ].join('');
-
   list.innerHTML = channels.map(ch => `
     <li class="${ch.isLive ? 'is-live' : ''}" data-channel-id="${escAttr(ch.channelId)}">
       <div class="ch-row">
@@ -968,57 +997,12 @@ function renderChannelList() {
         <button class="btn-set-url" title="Manually set live stream URL">🔗</button>
         <button class="btn-remove-ch" title="Remove channel">&times;</button>
       </div>
-      <div class="ch-pair-row">
-        <select class="ch-pair-select" data-channel-id="${escAttr(ch.channelId)}">
-          ${pairOptions}
-        </select>
-        <button class="btn-add-pair" title="Add custom pair">+</button>
-      </div>
       <div class="ch-url-row hidden">
         <input class="ch-url-input" type="text" placeholder="Paste live stream URL (youtube.com/watch?v=...)">
         <button class="btn-url-confirm">Set</button>
       </div>
     </li>
   `).join('');
-
-  // Restore selected pair per channel
-  list.querySelectorAll('.ch-pair-select').forEach(sel => {
-    const ch = channels.find(c => c.channelId === sel.dataset.channelId);
-    sel.value = ch?.pair || '';
-    sel.addEventListener('change', () => setPairForChannel(sel.dataset.channelId, sel.value));
-  });
-
-  // "+" add custom pair — inline form per channel row
-  list.querySelectorAll('.btn-add-pair').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const li = btn.closest('li');
-      const existing = li.querySelector('.ch-add-pair-row');
-      if (existing) { existing.remove(); return; }
-      const addRow = document.createElement('div');
-      addRow.className = 'ch-add-pair-row';
-      addRow.innerHTML = `
-        <input class="ch-pair-label-input" type="text" placeholder="Label e.g. EUR/GBP">
-        <input class="ch-pair-value-input" type="text" placeholder="Value e.g. EURGBP">
-        <button class="btn-pair-confirm">Add</button>
-      `;
-      li.appendChild(addRow);
-      addRow.querySelector('.ch-pair-label-input').focus();
-      addRow.querySelector('.btn-pair-confirm').addEventListener('click', async () => {
-        const label = addRow.querySelector('.ch-pair-label-input').value.trim();
-        const value = addRow.querySelector('.ch-pair-value-input').value.trim().toUpperCase();
-        if (!label || !value) { showToast('Both label and value are required', 'error'); return; }
-        await addCustomPair(label, value);
-        showToast(`Pair ${label} added`, 'success');
-        renderChannelList(); // re-render so new pair appears in all dropdowns
-      });
-      addRow.querySelectorAll('input').forEach(inp => {
-        inp.addEventListener('keydown', e => {
-          if (e.key === 'Enter') addRow.querySelector('.btn-pair-confirm').click();
-          if (e.key === 'Escape') addRow.remove();
-        });
-      });
-    });
-  });
 
   list.querySelectorAll('.btn-remove-ch').forEach(btn => {
     btn.addEventListener('click', () => removeChannel(btn.closest('li').dataset.channelId));
@@ -1067,7 +1051,7 @@ function setStreamUrl(channelId, url) {
 
 // ── UI Helpers ────────────────────────────────────────────────────────────
 function updateLiveCount() {
-  const count = channels.filter(c => c.isLive).length;
+  const count = channels.filter(c => c.isLive && c.videoId).length;
   const el = document.getElementById('live-count');
   if (!el) return;
   el.textContent = count > 0 ? `${count} LIVE` : '— LIVE';

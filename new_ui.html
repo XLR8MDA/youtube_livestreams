@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradeWatch — Trading Stream Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #141416;
+    --bg3: #1a1a1e;
+    --bg4: #222228;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0ede8;
+    --text2: #888880;
+    --text3: #555552;
+    --accent: #c8f064;
+    --accent2: #64f0c8;
+    --red: #f0644a;
+    --amber: #f0b864;
+    --blue: #64a8f0;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-head);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ─── NAV ─── */
+  nav {
+    display: flex; align-items: center;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 50px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .nav-logo {
+    font-size: 15px; font-weight: 700; letter-spacing: 0.08em;
+    color: var(--text); margin-right: 32px;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .nav-logo .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.75); }
+  }
+  .nav-tabs { display: flex; height: 100%; }
+  .nav-tab {
+    height: 100%; padding: 0 18px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+    color: var(--text3); cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    position: relative; top: 1px;
+    user-select: none;
+  }
+  .nav-tab:hover { color: var(--text2); }
+  .nav-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-badge {
+    background: var(--red); color: #fff;
+    font-size: 9px; padding: 1px 6px; border-radius: 20px;
+    font-family: var(--font-mono); font-weight: 500;
+  }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .live-counter {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(240,100,74,0.1); border: 1px solid rgba(240,100,74,0.22);
+    padding: 5px 12px; border-radius: 4px;
+    font-size: 11px; font-family: var(--font-mono); color: var(--red);
+    letter-spacing: 0.06em;
+  }
+  .live-counter .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--red); animation: pulse 1.4s infinite;
+  }
+
+  /* ─── TAB CONTENT ─── */
+  .tab-content { flex: 1; overflow: hidden; display: none; }
+  .tab-content.active { display: flex; }
+
+  /* ══════════════════════════════════════
+     TAB 1: LIVE
+  ══════════════════════════════════════ */
+  #tab-live { flex-direction: column; }
+
+  .live-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 18px;
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .toolbar-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 13px; border-radius: 4px;
+    background: var(--bg4); border: 1px solid var(--border2);
+    color: var(--text2); font-size: 11px; font-family: var(--font-head);
+    font-weight: 600; letter-spacing: 0.05em; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .toolbar-btn:hover { background: var(--bg3); color: var(--text); border-color: rgba(255,255,255,0.2); }
+  .toolbar-sep { width: 1px; height: 20px; background: var(--border); margin: 0 3px; }
+  .toolbar-info { font-size: 11px; color: var(--text3); font-family: var(--font-mono); margin-left: auto; }
+
+  .stream-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    background: #0a0a0c;
+    overflow: hidden;
+  }
+
+  .stream-cell {
+    position: relative; overflow: hidden;
+    background: var(--bg2); cursor: pointer;
+  }
+  .stream-cell:hover .stream-overlay { opacity: 1; }
+  .stream-cell:hover .cell-bg { transform: scale(1.03); }
+
+  .cell-accent { position: absolute; top: 0; left: 0; right: 0; height: 2px; z-index: 2; }
+
+  .cell-bg {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.4s ease;
+  }
+  .cell-init {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700;
+  }
+
+  .stream-overlay {
+    position: absolute; inset: 0; opacity: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.3) 55%, transparent 100%);
+    transition: opacity 0.22s;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 12px; z-index: 3;
+  }
+  .overlay-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .live-badge {
+    background: var(--red); color: #fff;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 3px; font-family: var(--font-mono);
+  }
+  .viewer-count {
+    font-size: 11px; font-family: var(--font-mono); color: rgba(255,255,255,0.65);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .overlay-bottom {}
+  .stream-name { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 3px; }
+  .stream-pair { font-size: 11px; font-family: var(--font-mono); color: var(--accent); }
+  .stream-controls { display: flex; gap: 5px; margin-top: 8px; }
+  .sctrl {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 3px;
+    font-size: 10px; cursor: pointer; font-family: var(--font-mono);
+    transition: background 0.15s; letter-spacing: 0.03em;
+  }
+  .sctrl:hover { background: rgba(255,255,255,0.2); color: #fff; }
+  .sctrl.solo { color: var(--accent); border-color: rgba(200,240,100,0.3); }
+
+  .empty-cell {
+    width: 100%; height: 100%; background: var(--bg2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    opacity: 0.35;
+  }
+  .empty-cell .plus-ring {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 1px dashed var(--border2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: var(--text3); font-weight: 300;
+  }
+  .empty-cell span { font-size: 10px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.06em; }
+
+  /* ══════════════════════════════════════
+     TAB 2: CHANNELS
+  ══════════════════════════════════════ */
+  #tab-channels { overflow: hidden; }
+  .panel-left {
+    width: 400px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--bg2);
+  }
+  .panel-right { flex: 1; display: flex; flex-direction: column; background: var(--bg); overflow-y: auto; }
+  .panel-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .panel-title {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--text3); text-transform: uppercase; margin-bottom: 12px;
+  }
+  .add-row { display: flex; gap: 8px; }
+  .add-input {
+    flex: 1; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); padding: 9px 12px; border-radius: 4px;
+    font-size: 12px; font-family: var(--font-head); outline: none;
+    transition: border-color 0.15s;
+  }
+  .add-input:focus { border-color: rgba(200,240,100,0.4); }
+  .add-input::placeholder { color: var(--text3); }
+  .add-btn {
+    background: var(--accent); color: #0d0d0f;
+    border: none; padding: 9px 18px; border-radius: 4px;
+    font-size: 12px; font-weight: 700; font-family: var(--font-head);
+    cursor: pointer; transition: opacity 0.15s; letter-spacing: 0.03em;
+  }
+  .add-btn:hover { opacity: 0.82; }
+  .panel-scroll { flex: 1; overflow-y: auto; }
+  .panel-scroll::-webkit-scrollbar { width: 3px; }
+  .panel-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .ch-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 20px; border-bottom: 1px solid var(--border);
+    transition: background 0.15s; cursor: pointer;
+  }
+  .ch-row:hover { background: rgba(255,255,255,0.03); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-live { background: var(--red); animation: pulse 1.4s infinite; }
+  .dot-offline { background: var(--text3); }
+  .ch-avatar {
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .ch-info { flex: 1; min-width: 0; }
+  .ch-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .ch-handle { font-size: 11px; color: var(--text3); font-family: var(--font-mono); margin-top: 1px; }
+  .ch-select {
+    background: var(--bg4); border: 1px solid var(--border);
+    color: var(--text2); padding: 5px 8px; border-radius: 3px;
+    font-size: 11px; font-family: var(--font-mono); outline: none; cursor: pointer;
+  }
+  .ch-del {
+    background: none; border: none; color: var(--text3);
+    cursor: pointer; padding: 5px; border-radius: 3px; font-size: 15px;
+    transition: color 0.15s; line-height: 1;
+  }
+  .ch-del:hover { color: var(--red); }
+
+  .pairs-section { padding: 22px 24px; }
+  .pairs-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .pair-pill {
+    background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text2); padding: 6px 14px; border-radius: 20px;
+    font-size: 11px; font-family: var(--font-mono); font-weight: 500;
+    letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s;
+  }
+  .pair-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .pair-pill.hi { background: rgba(200,240,100,0.08); border-color: rgba(200,240,100,0.3); color: var(--accent); }
+
+  /* ══════════════════════════════════════
+     TAB 3: BACKTEST
+  ══════════════════════════════════════ */
+  #tab-backtest { overflow: hidden; }
+  .backtest-sidebar {
+    width: 270px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--bg2);
+  }
+  .sidebar-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-select {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); padding: 8px 10px; border-radius: 4px;
+    font-size: 12px; font-family: var(--font-head); outline: none;
+  }
+  .stream-card {
+    display: flex; gap: 10px; padding: 11px 14px;
+    cursor: pointer; border-bottom: 1px solid var(--border);
+    transition: background 0.15s; border-left: 2px solid transparent;
+  }
+  .stream-card:hover { background: rgba(255,255,255,0.03); }
+  .stream-card.active { background: var(--bg3); border-left-color: var(--accent); }
+  .sc-thumb {
+    width: 64px; height: 38px; border-radius: 3px; flex-shrink: 0;
+    background: var(--bg4); display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .sc-info { flex: 1; min-width: 0; }
+  .sc-title {
+    font-size: 11px; font-weight: 500; color: var(--text); line-height: 1.4;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sc-date { font-size: 10px; color: var(--text3); font-family: var(--font-mono); margin-top: 3px; }
+
+  .backtest-main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
+  .backtest-main::-webkit-scrollbar { width: 3px; }
+  .backtest-main::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .player-meta {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 18px; border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .player-meta-title { font-size: 12px; font-weight: 500; color: var(--text); flex: 1; }
+  .meta-pair {
+    background: rgba(100,240,200,0.08); border: 1px solid rgba(100,240,200,0.22);
+    color: var(--accent2); padding: 4px 12px; border-radius: 3px;
+    font-size: 10px; font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.05em;
+  }
+
+  .player-box {
+    height: 220px; display: flex; align-items: center; justify-content: center;
+    background: #090909; border-bottom: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .player-box::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(255,255,255,0.012) 28px, rgba(255,255,255,0.012) 29px);
+  }
+  .play-icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.45); font-size: 22px;
+    position: relative; z-index: 1;
+  }
+
+  .analyze-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 18px; border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .analyze-btn {
+    background: rgba(200,240,100,0.08); border: 1px solid rgba(200,240,100,0.28);
+    color: var(--accent); padding: 7px 16px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; font-family: var(--font-head);
+    letter-spacing: 0.05em; cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .analyze-btn:hover { background: rgba(200,240,100,0.15); }
+  .chips-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 3px; cursor: pointer;
+    font-size: 10px; font-family: var(--font-mono); font-weight: 500;
+    transition: opacity 0.15s; letter-spacing: 0.02em;
+  }
+  .chip:hover { opacity: 0.7; }
+  .chip .cdot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .chip.entry { background: rgba(100,240,100,0.08); border: 1px solid rgba(100,240,100,0.22); color: #6ef06e; }
+  .chip.exit  { background: rgba(240,100,74,0.08);  border: 1px solid rgba(240,100,74,0.22);  color: var(--red); }
+  .chip.disc  { background: var(--bg3); border: 1px solid var(--border); color: var(--text3); }
+
+  .journal-wrap { padding: 18px; }
+  .sec-title {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--text3); text-transform: uppercase; margin-bottom: 14px;
+  }
+  .j-form {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 16px; margin-bottom: 18px;
+  }
+  .f-row { display: flex; gap: 8px; margin-bottom: 10px; }
+  .f-group { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .f-label { font-size: 10px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.06em; }
+  .f-input {
+    background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); padding: 8px 10px; border-radius: 4px;
+    font-size: 12px; font-family: var(--font-head); outline: none;
+    transition: border-color 0.15s; width: 100%;
+  }
+  .f-input:focus { border-color: rgba(200,240,100,0.35); }
+  .f-select {
+    background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); padding: 8px 10px; border-radius: 4px;
+    font-size: 12px; font-family: var(--font-head); outline: none; width: 100%;
+  }
+  .tog-group { display: flex; gap: 4px; }
+  .tog {
+    flex: 1; padding: 7px 8px; border-radius: 3px; text-align: center;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text3); font-size: 11px; font-weight: 600;
+    font-family: var(--font-head); cursor: pointer; transition: all 0.15s;
+  }
+  .tog.on-long  { background: rgba(100,240,200,0.08); border-color: rgba(100,240,200,0.28); color: var(--accent2); }
+  .tog.on-short { background: rgba(240,100,74,0.08);  border-color: rgba(240,100,74,0.28);  color: var(--red); }
+  .tog.on-win   { background: rgba(100,240,100,0.08); border-color: rgba(100,240,100,0.28); color: #6ef06e; }
+  .tog.on-loss  { background: rgba(240,100,74,0.08);  border-color: rgba(240,100,74,0.28);  color: var(--red); }
+  .tog.on-be    { background: rgba(240,184,100,0.08); border-color: rgba(240,184,100,0.28); color: var(--amber); }
+  .rr-box {
+    background: var(--bg3); border: 1px solid var(--border2);
+    padding: 8px 10px; border-radius: 4px;
+    font-size: 13px; font-family: var(--font-mono); color: var(--accent2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rr-lbl { font-size: 10px; color: var(--text3); }
+  .save-btn {
+    width: 100%; background: var(--accent); color: #0d0d0f;
+    border: none; padding: 10px; border-radius: 4px;
+    font-size: 12px; font-weight: 700; font-family: var(--font-head);
+    cursor: pointer; transition: opacity 0.15s; letter-spacing: 0.04em; margin-top: 4px;
+  }
+  .save-btn:hover { opacity: 0.82; }
+
+  .j-entries { display: flex; flex-direction: column; gap: 8px; }
+  .j-entry {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 5px; padding: 11px 14px;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .je-pair { font-size: 11px; font-family: var(--font-mono); color: var(--accent); font-weight: 600; min-width: 58px; padding-top: 1px; }
+  .je-body { flex: 1; }
+  .je-dir { font-size: 11px; font-weight: 700; display: inline; }
+  .je-res { font-size: 10px; font-family: var(--font-mono); }
+  .je-long  { color: var(--accent2); }
+  .je-short { color: var(--red); }
+  .je-win   { color: #6ef06e; }
+  .je-loss  { color: var(--red); }
+  .je-be    { color: var(--amber); }
+  .je-notes { font-size: 11px; color: var(--text3); margin-top: 3px; line-height: 1.5; }
+  .je-ts { font-size: 10px; font-family: var(--font-mono); color: var(--text3); margin-top: 2px; }
+  .je-rr { font-size: 13px; font-family: var(--font-mono); color: var(--accent2); font-weight: 600; align-self: center; flex-shrink: 0; }
+
+  /* Analytics row */
+  .analytics-row {
+    display: grid; grid-template-columns: repeat(5,1fr); gap: 8px;
+    padding: 14px 18px; border-top: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .stat-card {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .stat-label { font-size: 9px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.07em; text-transform: uppercase; }
+  .stat-val { font-size: 18px; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+  .stat-val.green { color: #6ef06e; }
+  .stat-val.amber { color: var(--amber); }
+
+  /* ══════════════════════════════════════
+     TAB 4: STREAM LOG
+  ══════════════════════════════════════ */
+  #tab-log { flex-direction: column; }
+  .log-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0; flex-wrap: wrap;
+  }
+  .filt-btn {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text3); padding: 5px 13px; border-radius: 3px;
+    font-size: 11px; font-family: var(--font-mono); cursor: pointer;
+    transition: all 0.15s; letter-spacing: 0.04em;
+  }
+  .filt-btn.active { background: var(--bg4); border-color: var(--border2); color: var(--text); }
+  .filt-btn:hover { color: var(--text2); }
+  .log-ch-filter {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text3); padding: 5px 10px; border-radius: 3px;
+    font-size: 11px; font-family: var(--font-head); outline: none; margin-left: auto;
+  }
+  .log-scroll { flex: 1; overflow-y: auto; padding: 18px 22px; }
+  .log-scroll::-webkit-scrollbar { width: 3px; }
+  .log-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .day-group { margin-bottom: 26px; }
+  .day-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    color: var(--text3); text-transform: uppercase;
+    margin-bottom: 10px;
+    font-family: var(--font-mono);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .day-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .log-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 13px 16px; margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+  .log-card:hover { border-color: var(--border2); }
+  .log-card-top {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .log-avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .log-card-info { flex: 1; min-width: 0; }
+  .log-card-title {
+    font-size: 12px; font-weight: 500; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .log-card-sub { font-size: 11px; color: var(--text3); font-family: var(--font-mono); margin-top: 2px; }
+  .status-badge {
+    font-size: 10px; font-family: var(--font-mono); font-weight: 600;
+    padding: 3px 9px; border-radius: 3px; letter-spacing: 0.05em; flex-shrink: 0;
+  }
+  .s-analyzed    { background: rgba(100,240,200,0.08); border: 1px solid rgba(100,240,200,0.22); color: var(--accent2); }
+  .s-no-trans    { background: var(--bg3); border: 1px solid var(--border); color: var(--text3); }
+  .s-error       { background: rgba(240,100,74,0.08);  border: 1px solid rgba(240,100,74,0.22);  color: var(--red); }
+  .s-pending     { background: rgba(100,168,240,0.08); border: 1px solid rgba(100,168,240,0.22); color: var(--blue); }
+  .marker-count { font-size: 10px; font-family: var(--font-mono); color: var(--text3); flex-shrink: 0; }
+  .watch-link {
+    font-size: 10px; font-family: var(--font-mono); color: var(--blue);
+    text-decoration: none; display: flex; align-items: center; gap: 3px;
+    transition: opacity 0.15s; flex-shrink: 0;
+  }
+  .watch-link:hover { opacity: 0.65; }
+  .log-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── NAV ─── -->
+  <nav>
+    <div class="nav-logo">
+      <div class="dot"></div>
+      TRADEWATCH
+    </div>
+    <div class="nav-tabs">
+      <div class="nav-tab active" onclick="showTab('live',this)">
+        LIVE <span class="tab-badge">3</span>
+      </div>
+      <div class="nav-tab" onclick="showTab('channels',this)">CHANNELS</div>
+      <div class="nav-tab" onclick="showTab('backtest',this)">BACKTEST</div>
+      <div class="nav-tab" onclick="showTab('log',this)">STREAM LOG</div>
+    </div>
+    <div class="nav-right">
+      <div class="live-counter">
+        <div class="live-dot"></div>
+        3 LIVE
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════
+       TAB 1: LIVE
+  ══════════════════════════════════════ -->
+  <div id="tab-live" class="tab-content active">
+    <div class="live-toolbar">
+      <div class="toolbar-btn">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/><path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/></svg>
+        SYNC ALL
+      </div>
+      <div class="toolbar-sep"></div>
+      <div class="toolbar-btn">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+        REFRESH
+      </div>
+      <div class="toolbar-sep"></div>
+      <div class="toolbar-btn">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+        MANAGE
+      </div>
+      <div class="toolbar-info">AUTO-SYNC: 30s &nbsp;·&nbsp; LAST POLL: 0:42 AGO &nbsp;·&nbsp; QUOTA: 84%</div>
+    </div>
+
+    <div class="stream-grid">
+
+      <!-- Cell 1 -->
+      <div class="stream-cell">
+        <div class="cell-accent" style="background:var(--accent)"></div>
+        <div class="cell-bg" style="background:linear-gradient(135deg,#0d1a09 0%,#1c3010 100%);">
+          <div class="cell-init" style="background:rgba(200,240,100,0.1);color:var(--accent);">FS</div>
+        </div>
+        <div class="stream-overlay">
+          <div class="overlay-top">
+            <span class="live-badge">● LIVE</span>
+            <span class="viewer-count">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.133 13.133 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>
+              12.4K
+            </span>
+          </div>
+          <div class="overlay-bottom">
+            <div class="stream-name">ForexSignals Pro</div>
+            <div class="stream-pair">XAUUSD · LIVE ANALYSIS</div>
+            <div class="stream-controls">
+              <button class="sctrl solo">♪ SOLO</button>
+              <button class="sctrl">⏸ PAUSE</button>
+              <button class="sctrl">⟳ SYNC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cell 2 -->
+      <div class="stream-cell">
+        <div class="cell-accent" style="background:var(--blue)"></div>
+        <div class="cell-bg" style="background:linear-gradient(135deg,#090d1a 0%,#101c30 100%);">
+          <div class="cell-init" style="background:rgba(100,168,240,0.1);color:var(--blue);">GT</div>
+        </div>
+        <div class="stream-overlay">
+          <div class="overlay-top">
+            <span class="live-badge">● LIVE</span>
+            <span class="viewer-count">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.133 13.133 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>
+              8.1K
+            </span>
+          </div>
+          <div class="overlay-bottom">
+            <div class="stream-name">GoldTrader Academy</div>
+            <div class="stream-pair">NAS100 · BREAKOUT WATCH</div>
+            <div class="stream-controls">
+              <button class="sctrl">♪ SOLO</button>
+              <button class="sctrl">⏸ PAUSE</button>
+              <button class="sctrl">⟳ SYNC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cell 3 -->
+      <div class="stream-cell">
+        <div class="cell-accent" style="background:var(--amber)"></div>
+        <div class="cell-bg" style="background:linear-gradient(135deg,#1a130a 0%,#2d1e08 100%);">
+          <div class="cell-init" style="background:rgba(240,184,100,0.1);color:var(--amber);">FX</div>
+        </div>
+        <div class="stream-overlay">
+          <div class="overlay-top">
+            <span class="live-badge">● LIVE</span>
+            <span class="viewer-count">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.133 13.133 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>
+              3.8K
+            </span>
+          </div>
+          <div class="overlay-bottom">
+            <div class="stream-name">FX Mastery HQ</div>
+            <div class="stream-pair">EURUSD · SESSION OPEN</div>
+            <div class="stream-controls">
+              <button class="sctrl">♪ SOLO</button>
+              <button class="sctrl">⏸ PAUSE</button>
+              <button class="sctrl">⟳ SYNC</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cell 4: empty -->
+      <div class="stream-cell" style="cursor:default;">
+        <div class="empty-cell">
+          <div class="plus-ring">+</div>
+          <span>ADD CHANNEL</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       TAB 2: CHANNELS
+  ══════════════════════════════════════ -->
+  <div id="tab-channels" class="tab-content">
+    <div class="panel-left">
+      <div class="panel-header">
+        <div class="panel-title">Watched Channels</div>
+        <div class="add-row">
+          <input class="add-input" placeholder="@handle, stream URL, or UC…ID" />
+          <button class="add-btn">ADD</button>
+        </div>
+      </div>
+      <div class="panel-scroll">
+        <div class="ch-row">
+          <div class="status-dot dot-live"></div>
+          <div class="ch-avatar" style="background:rgba(200,240,100,0.1);color:var(--accent);">FS</div>
+          <div class="ch-info">
+            <div class="ch-name">ForexSignals Pro</div>
+            <div class="ch-handle">@forexsignalspro</div>
+          </div>
+          <select class="ch-select"><option>XAUUSD</option><option>EURUSD</option><option>NAS100</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+        <div class="ch-row">
+          <div class="status-dot dot-live"></div>
+          <div class="ch-avatar" style="background:rgba(100,168,240,0.1);color:var(--blue);">GT</div>
+          <div class="ch-info">
+            <div class="ch-name">GoldTrader Academy</div>
+            <div class="ch-handle">@goldtraderacademy</div>
+          </div>
+          <select class="ch-select"><option>NAS100</option><option>US30</option><option>XAUUSD</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+        <div class="ch-row">
+          <div class="status-dot dot-live"></div>
+          <div class="ch-avatar" style="background:rgba(240,184,100,0.1);color:var(--amber);">FX</div>
+          <div class="ch-info">
+            <div class="ch-name">FX Mastery HQ</div>
+            <div class="ch-handle">@fxmasteryhq</div>
+          </div>
+          <select class="ch-select"><option>EURUSD</option><option>GBPUSD</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+        <div class="ch-row">
+          <div class="status-dot dot-offline"></div>
+          <div class="ch-avatar" style="background:rgba(240,100,74,0.1);color:var(--red);">TC</div>
+          <div class="ch-info">
+            <div class="ch-name">TradeCraft Live</div>
+            <div class="ch-handle">@tradecraftlive</div>
+          </div>
+          <select class="ch-select"><option>BTCUSD</option><option>ETHUSD</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+        <div class="ch-row">
+          <div class="status-dot dot-offline"></div>
+          <div class="ch-avatar" style="background:rgba(100,240,200,0.1);color:var(--accent2);">PM</div>
+          <div class="ch-info">
+            <div class="ch-name">PipMaster FX</div>
+            <div class="ch-handle">@pipmasterfx</div>
+          </div>
+          <select class="ch-select"><option>GBPJPY</option><option>USDJPY</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+        <div class="ch-row">
+          <div class="status-dot dot-offline"></div>
+          <div class="ch-avatar" style="background:rgba(100,240,100,0.1);color:#6ef06e;">ST</div>
+          <div class="ch-info">
+            <div class="ch-name">SmartTrade Desk</div>
+            <div class="ch-handle">@smarttradedesk</div>
+          </div>
+          <select class="ch-select"><option>US30</option><option>NAS100</option></select>
+          <button class="ch-del">✕</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-right">
+      <div class="pairs-section">
+        <div class="panel-title" style="margin-bottom:14px;">Global Pairs / Symbols</div>
+        <div class="pairs-grid">
+          <div class="pair-pill hi">XAU/USD</div>
+          <div class="pair-pill hi">EUR/USD</div>
+          <div class="pair-pill">GBP/USD</div>
+          <div class="pair-pill">USD/JPY</div>
+          <div class="pair-pill">GBP/JPY</div>
+          <div class="pair-pill">NAS100</div>
+          <div class="pair-pill">US30</div>
+          <div class="pair-pill">BTC/USD</div>
+          <div class="pair-pill">ETH/USD</div>
+          <div class="pair-pill">USD/CAD</div>
+        </div>
+        <div class="add-row" style="max-width:300px;">
+          <input class="add-input" placeholder="Add custom pair…" />
+          <button class="add-btn" style="padding:9px 16px;">+</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       TAB 3: BACKTEST
+  ══════════════════════════════════════ -->
+  <div id="tab-backtest" class="tab-content">
+    <div class="backtest-sidebar">
+      <div class="sidebar-head">
+        <select class="sidebar-select">
+          <option>ForexSignals Pro</option>
+          <option>GoldTrader Academy</option>
+          <option>FX Mastery HQ</option>
+        </select>
+      </div>
+      <div class="panel-scroll">
+        <div class="stream-card active">
+          <div class="sc-thumb">🎬</div>
+          <div class="sc-info">
+            <div class="sc-title">London Session + NY Open XAUUSD</div>
+            <div class="sc-date">Apr 27 · 4h 18m</div>
+          </div>
+        </div>
+        <div class="stream-card">
+          <div class="sc-thumb">🎬</div>
+          <div class="sc-info">
+            <div class="sc-title">Gold Breakout + Live Entries</div>
+            <div class="sc-date">Apr 25 · 2h 52m</div>
+          </div>
+        </div>
+        <div class="stream-card">
+          <div class="sc-thumb">🎬</div>
+          <div class="sc-info">
+            <div class="sc-title">Weekly Outlook XAUUSD / NAS100</div>
+            <div class="sc-date">Apr 22 · 3h 05m</div>
+          </div>
+        </div>
+        <div class="stream-card">
+          <div class="sc-thumb">🎬</div>
+          <div class="sc-info">
+            <div class="sc-title">Asian Range Fades — Full Session</div>
+            <div class="sc-date">Apr 19 · 1h 44m</div>
+          </div>
+        </div>
+        <div class="stream-card">
+          <div class="sc-thumb">🎬</div>
+          <div class="sc-info">
+            <div class="sc-title">Pre-CPI Scalp Setup Walkthrough</div>
+            <div class="sc-date">Apr 14 · 1h 22m</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="backtest-main">
+      <div class="player-meta">
+        <div class="player-meta-title">London Session + NY Open XAUUSD — Apr 27, 2025</div>
+        <div class="meta-pair">XAUUSD</div>
+      </div>
+      <div class="player-box">
+        <div class="play-icon">▶</div>
+      </div>
+      <div class="analyze-bar">
+        <button class="analyze-btn">⚡ ANALYZE WITH AI</button>
+        <div class="chips-row">
+          <div class="chip entry"><div class="cdot"></div>0:14:22 LONG</div>
+          <div class="chip exit"><div class="cdot"></div>0:31:08 EXIT</div>
+          <div class="chip entry"><div class="cdot"></div>1:02:44 LONG</div>
+          <div class="chip disc"><div class="cdot"></div>1:18:00 DISCUSS</div>
+          <div class="chip exit"><div class="cdot"></div>2:09:15 EXIT</div>
+          <div class="chip entry"><div class="cdot"></div>3:22:50 SHORT</div>
+        </div>
+      </div>
+
+      <div class="analytics-row">
+        <div class="stat-card">
+          <div class="stat-label">TRADES</div>
+          <div class="stat-val">6</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">WIN RATE</div>
+          <div class="stat-val green">66%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">AVG R:R</div>
+          <div class="stat-val amber">1.9R</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">WINS</div>
+          <div class="stat-val green">4</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">LOSSES</div>
+          <div class="stat-val" style="color:var(--red)">2</div>
+        </div>
+      </div>
+
+      <div class="journal-wrap">
+        <div class="sec-title">Trade Journal</div>
+        <div class="j-form">
+          <div class="f-row">
+            <div class="f-group">
+              <div class="f-label">PAIR</div>
+              <select class="f-select"><option>XAUUSD</option><option>EURUSD</option><option>NAS100</option><option>US30</option></select>
+            </div>
+            <div class="f-group">
+              <div class="f-label">DIRECTION</div>
+              <div class="tog-group">
+                <div class="tog on-long">Long</div>
+                <div class="tog">Short</div>
+              </div>
+            </div>
+            <div class="f-group">
+              <div class="f-label">RESULT</div>
+              <div class="tog-group">
+                <div class="tog on-win">Win</div>
+                <div class="tog">Loss</div>
+                <div class="tog">BE</div>
+              </div>
+            </div>
+          </div>
+          <div class="f-row">
+            <div class="f-group"><div class="f-label">ENTRY</div><input class="f-input" placeholder="2312.50" /></div>
+            <div class="f-group"><div class="f-label">EXIT TP</div><input class="f-input" placeholder="2328.00" /></div>
+            <div class="f-group"><div class="f-label">STOP</div><input class="f-input" placeholder="2305.00" /></div>
+            <div class="f-group">
+              <div class="f-label">R:R</div>
+              <div class="rr-box"><span class="rr-lbl">R:R</span>2.07</div>
+            </div>
+          </div>
+          <div class="f-row">
+            <div class="f-group" style="max-width:130px;"><div class="f-label">TIMESTAMP</div><input class="f-input" placeholder="0:14:22" /></div>
+            <div class="f-group" style="flex:3;"><div class="f-label">NOTES</div><input class="f-input" placeholder="Breakout above 2310 resistance, clean entry on retest…" /></div>
+          </div>
+          <button class="save-btn">SAVE TRADE</button>
+        </div>
+
+        <div class="sec-title">Saved Entries</div>
+        <div class="j-entries">
+          <div class="j-entry">
+            <div class="je-pair">XAUUSD</div>
+            <div class="je-body">
+              <div><span class="je-dir je-long">Long</span> &nbsp;<span class="je-res je-win">WIN</span></div>
+              <div class="je-notes">Breakout retest, clean entry above 2310 resistance level</div>
+              <div class="je-ts">@ 0:14:22</div>
+            </div>
+            <div class="je-rr">2.1R</div>
+          </div>
+          <div class="j-entry">
+            <div class="je-pair">XAUUSD</div>
+            <div class="je-body">
+              <div><span class="je-dir je-long">Long</span> &nbsp;<span class="je-res je-be">BE</span></div>
+              <div class="je-notes">Moved to BE after NY open spike — stopped at entry</div>
+              <div class="je-ts">@ 1:02:44</div>
+            </div>
+            <div class="je-rr">0R</div>
+          </div>
+          <div class="j-entry">
+            <div class="je-pair">XAUUSD</div>
+            <div class="je-body">
+              <div><span class="je-dir je-short">Short</span> &nbsp;<span class="je-res je-win">WIN</span></div>
+              <div class="je-notes">Distribution at 2344, confirmed rejection, clean short</div>
+              <div class="je-ts">@ 3:22:50</div>
+            </div>
+            <div class="je-rr">1.8R</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       TAB 4: STREAM LOG
+  ══════════════════════════════════════ -->
+  <div id="tab-log" class="tab-content" style="flex-direction:column;">
+    <div class="log-header">
+      <div class="filt-btn active">7D</div>
+      <div class="filt-btn">30D</div>
+      <div class="filt-btn">90D</div>
+      <div class="toolbar-sep"></div>
+      <select class="log-ch-filter">
+        <option>All Channels</option>
+        <option>ForexSignals Pro</option>
+        <option>GoldTrader Academy</option>
+        <option>FX Mastery HQ</option>
+        <option>TradeCraft Live</option>
+      </select>
+      <div class="toolbar-btn" style="font-size:11px;">↻ REFRESH</div>
+    </div>
+
+    <div class="log-scroll">
+
+      <div class="day-group">
+        <div class="day-label">APR 27, 2025</div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(200,240,100,0.1);color:var(--accent);">FS</div>
+            <div class="log-card-info">
+              <div class="log-card-title">London Session + NY Open XAUUSD — Full Stream</div>
+              <div class="log-card-sub">ForexSignals Pro &nbsp;·&nbsp; ended 10:48 PM &nbsp;·&nbsp; 4h 18m</div>
+            </div>
+            <span class="status-badge s-analyzed">ANALYZED</span>
+            <span class="marker-count">6 markers</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+          <div class="log-chips">
+            <div class="chip entry"><div class="cdot"></div>0:14:22 Long XAUUSD @2312</div>
+            <div class="chip exit"><div class="cdot"></div>0:31:08 Exit @2328</div>
+            <div class="chip entry"><div class="cdot"></div>1:02:44 Long @2310</div>
+            <div class="chip disc"><div class="cdot"></div>1:18:00 Discuss</div>
+            <div class="chip exit"><div class="cdot"></div>2:09:15 Exit @2338</div>
+            <div class="chip entry"><div class="cdot"></div>3:22:50 Short @2344</div>
+          </div>
+        </div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(100,168,240,0.1);color:var(--blue);">GT</div>
+            <div class="log-card-info">
+              <div class="log-card-title">NAS100 Pre-Market Breakout Session</div>
+              <div class="log-card-sub">GoldTrader Academy &nbsp;·&nbsp; ended 6:30 PM &nbsp;·&nbsp; 2h 10m</div>
+            </div>
+            <span class="status-badge s-analyzed">ANALYZED</span>
+            <span class="marker-count">4 markers</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+          <div class="log-chips">
+            <div class="chip entry"><div class="cdot"></div>0:08:10 Long NAS100 @18240</div>
+            <div class="chip disc"><div class="cdot"></div>0:22:00 Discuss</div>
+            <div class="chip exit"><div class="cdot"></div>0:44:30 Exit @18380</div>
+            <div class="chip entry"><div class="cdot"></div>1:12:00 Short @18410</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-group">
+        <div class="day-label">APR 25, 2025</div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(240,184,100,0.1);color:var(--amber);">FX</div>
+            <div class="log-card-info">
+              <div class="log-card-title">EU Session Recap — EURUSD Scalps</div>
+              <div class="log-card-sub">FX Mastery HQ &nbsp;·&nbsp; ended 4:15 PM &nbsp;·&nbsp; 1h 40m</div>
+            </div>
+            <span class="status-badge s-no-trans">NO TRANSCRIPT</span>
+            <span class="marker-count">—</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+        </div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(240,100,74,0.1);color:var(--red);">TC</div>
+            <div class="log-card-info">
+              <div class="log-card-title">BTC Weekend Volatility — Full Stream</div>
+              <div class="log-card-sub">TradeCraft Live &nbsp;·&nbsp; ended 11:59 PM &nbsp;·&nbsp; 3h 28m</div>
+            </div>
+            <span class="status-badge s-pending">PENDING</span>
+            <span class="marker-count">—</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-group">
+        <div class="day-label">APR 22, 2025</div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(100,240,200,0.1);color:var(--accent2);">PM</div>
+            <div class="log-card-info">
+              <div class="log-card-title">Weekly Market Outlook — GBPJPY + USDJPY</div>
+              <div class="log-card-sub">PipMaster FX &nbsp;·&nbsp; ended 8:45 PM &nbsp;·&nbsp; 2h 05m</div>
+            </div>
+            <span class="status-badge s-analyzed">ANALYZED</span>
+            <span class="marker-count">3 markers</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+          <div class="log-chips">
+            <div class="chip entry"><div class="cdot"></div>0:28:00 Long GBPJPY @190.85</div>
+            <div class="chip exit"><div class="cdot"></div>1:14:20 Exit @191.40</div>
+            <div class="chip disc"><div class="cdot"></div>1:45:00 Discuss SL strategy</div>
+          </div>
+        </div>
+
+        <div class="log-card">
+          <div class="log-card-top">
+            <div class="log-avatar" style="background:rgba(100,240,100,0.1);color:#6ef06e;">ST</div>
+            <div class="log-card-info">
+              <div class="log-card-title">US30 Futures Open — Live Scalping</div>
+              <div class="log-card-sub">SmartTrade Desk &nbsp;·&nbsp; ended 11:15 PM &nbsp;·&nbsp; 1h 55m</div>
+            </div>
+            <span class="status-badge s-error">ERROR</span>
+            <span class="marker-count">—</span>
+            <a class="watch-link" href="#">▶ Watch</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showTab(id, el) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    el.classList.add('active');
+  }
+
+  // Toggle direction buttons
+  document.querySelectorAll('.tog-group').forEach(group => {
+    group.querySelectorAll('.tog').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const siblings = group.querySelectorAll('.tog');
+        siblings.forEach(s => {
+          s.classList.remove('on-long','on-short','on-win','on-loss','on-be');
+        });
+        const txt = btn.textContent.trim().toLowerCase();
+        if (txt === 'long')  btn.classList.add('on-long');
+        if (txt === 'short') btn.classList.add('on-short');
+        if (txt === 'win')   btn.classList.add('on-win');
+        if (txt === 'loss')  btn.classList.add('on-loss');
+        if (txt === 'be')    btn.classList.add('on-be');
+      });
+    });
+  });
+
+  // Filter buttons in Stream Log
+  document.querySelectorAll('.filt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filt-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Pair pills toggle
+  document.querySelectorAll('.pair-pill').forEach(pill => {
+    pill.addEventListener('click', () => pill.classList.toggle('hi'));
+  });
+
+  // Backtest sidebar card selection
+  document.querySelectorAll('.stream-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.stream-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

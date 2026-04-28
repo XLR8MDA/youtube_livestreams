@@ -272,11 +272,6 @@ function renderPlayerMeta(stream) {
     parts.push(`<span>${btEscHtml(date)}</span>`);
   }
 
-  const channel = getCurrentChannel();
-  if (channel?.pair) {
-    parts.push(`<span class="player-pair">${btEscHtml(channel.pair)}</span>`);
-  }
-
   meta.innerHTML = parts.join('');
 }
 
@@ -315,10 +310,6 @@ function normalizeMarkerType(type) {
   return 'discussion';
 }
 
-function getCurrentChannel() {
-  const list = (typeof channels !== 'undefined' ? channels : []);
-  return list.find(ch => ch.channelId === btChannelId) || null;
-}
 
 // ── Journal Pair Select ───────────────────────────────────────────────────
 function populatePairSelect() {

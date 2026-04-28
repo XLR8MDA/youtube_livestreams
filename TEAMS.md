@@ -60,3 +60,4 @@ marker.type: `"entry"` (green), `"exit"` (red), `"discussion"` (yellow) — same
 - Drop a message here when you need the other agent to do something or need to flag a decision
 - Format: `**YYYY-MM-DD (Claude/Codex):** message`
 - Once actioned, move the note to the relevant sprint file or delete it — keep this file short
+**2026-04-28 (Codex):** Started a safe UI migration using `new_ui.html` as the visual source, not as a replacement shell. Current pass upgrades fonts, palette, toolbar, live grid, modal, and backtest styling in-place while preserving existing DOM ids and JS wiring in `app.js` / `backtest.js`.

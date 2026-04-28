@@ -46,7 +46,12 @@ async function loadStreamLog() {
     let url = `/.netlify/functions/stream-log?days=${days}`;
     if (channelId) url += `&channelId=${encodeURIComponent(channelId)}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Stream log function not available locally. Restart `netlify dev` so `/.netlify/functions/stream-log` is mounted.');
+      }
+      throw new Error(`HTTP ${res.status}`);
+    }
     grouped = await res.json();
   } catch (err) {
     setSlStatus('error', `Failed to load stream log: ${err.message}`);

@@ -6,6 +6,8 @@ let btChannelId    = null;
 let btStreamId     = null;
 let btStreamTitle  = null;
 let btNextToken    = null;   // pagination token for past-streams
+let btStreamMeta   = null;
+let btMarkers      = [];
 
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initBacktest);
@@ -16,6 +18,7 @@ function initBacktest() {
   setupLoadMore();
   setupRRCalc();
   setupJournalForm();
+  setupAnalyzeButton();
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────
@@ -109,7 +112,8 @@ async function loadPastStreams(channelId, pageToken) {
 function appendStreamCards(streams) {
   const list = document.getElementById('backtest-stream-list');
   for (const s of streams) {
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
     card.className = 'stream-card';
     card.dataset.videoId = s.videoId;
     const date = new Date(s.publishedAt).toLocaleDateString(undefined, {
@@ -121,8 +125,9 @@ function appendStreamCards(streams) {
         <div class="stream-card-title">${btEscHtml(s.title)}</div>
         <div class="stream-card-date">${date}</div>
       </div>
+      <span class="stream-card-action">Load</span>
     `;
-    card.addEventListener('click', () => selectStream(s.videoId, s.title));
+    card.addEventListener('click', () => selectStream(s));
     list.appendChild(card);
   }
 }
@@ -134,18 +139,25 @@ function setupLoadMore() {
 }
 
 // ── Player ────────────────────────────────────────────────────────────────
-function selectStream(videoId, title) {
+function selectStream(stream) {
+  const { videoId, title } = stream;
+
   document.querySelectorAll('.stream-card').forEach(c =>
     c.classList.toggle('active', c.dataset.videoId === videoId)
   );
 
   btStreamId    = videoId;
   btStreamTitle = title;
+  btStreamMeta  = stream;
+  btMarkers     = [];
 
   document.getElementById('backtest-player-title').textContent = title;
   document.getElementById('backtest-player-empty').classList.add('hidden');
   document.getElementById('backtest-player-frame').classList.remove('hidden');
   document.getElementById('journal-context').textContent = `Logging for: ${title}`;
+  document.getElementById('btn-analyze-stream').disabled = false;
+  renderPlayerMeta(stream);
+  resetAnalysisState();
 
   if (btPlayer) {
     btPlayer.loadVideoById(videoId);
@@ -165,13 +177,142 @@ function selectStream(videoId, title) {
 function resetPlayer() {
   btStreamId    = null;
   btStreamTitle = null;
+  btStreamMeta  = null;
+  btMarkers     = [];
   document.getElementById('backtest-player-title').textContent = 'No stream selected';
   document.getElementById('backtest-player-empty').classList.remove('hidden');
   document.getElementById('backtest-player-frame').classList.add('hidden');
+  document.getElementById('player-meta').innerHTML = '';
+  document.getElementById('btn-analyze-stream').disabled = true;
+  resetAnalysisState(true);
   if (btPlayer) {
     try { btPlayer.destroy(); } catch {}
     btPlayer = null;
   }
+}
+
+function setupAnalyzeButton() {
+  document.getElementById('btn-analyze-stream').addEventListener('click', async () => {
+    if (!btStreamId || !btChannelId) {
+      btShowToast('Select a stream first', 'error');
+      return;
+    }
+    await analyzeStream(btStreamId, btChannelId);
+  });
+}
+
+async function analyzeStream(videoId, channelId) {
+  const btn = document.getElementById('btn-analyze-stream');
+  const panel = document.getElementById('analysis-panel');
+  const status = document.getElementById('analysis-status');
+
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  panel.classList.remove('hidden');
+  status.textContent = 'Scanning transcript and extracting trade moments...';
+  document.getElementById('analysis-markers').innerHTML = '';
+
+  try {
+    const res = await fetch(
+      `/.netlify/functions/analyze-stream?videoId=${encodeURIComponent(videoId)}&channelId=${encodeURIComponent(channelId)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const markers = Array.isArray(data.markers) ? data.markers : [];
+    btMarkers = markers;
+
+    if (!markers.length) {
+      status.textContent = 'Analysis completed, but no trade markers were found for this stream.';
+      return;
+    }
+
+    const cacheNote = data.cached ? 'Cached analysis loaded.' : 'Analysis completed.';
+    status.textContent = `${cacheNote} Click a marker to jump the player.`;
+    renderAnalysisMarkers(markers);
+    btShowToast(`Loaded ${markers.length} marker${markers.length === 1 ? '' : 's'}`, 'success');
+  } catch (err) {
+    status.textContent = `Analysis unavailable: ${err.message}`;
+    btShowToast(`Analyze failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+  }
+}
+
+function resetAnalysisState(hidePanel = false) {
+  const panel = document.getElementById('analysis-panel');
+  const status = document.getElementById('analysis-status');
+  document.getElementById('analysis-markers').innerHTML = '';
+  status.textContent = btStreamId
+    ? 'Run analysis to extract entry, exit, and discussion moments.'
+    : 'Select a stream to enable transcript analysis.';
+  if (hidePanel) {
+    panel.classList.add('hidden');
+  } else {
+    panel.classList.remove('hidden');
+  }
+}
+
+function renderPlayerMeta(stream) {
+  const meta = document.getElementById('player-meta');
+  const parts = [];
+
+  if (stream?.publishedAt) {
+    const date = new Date(stream.publishedAt).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    parts.push(`<span>${btEscHtml(date)}</span>`);
+  }
+
+  const channel = getCurrentChannel();
+  if (channel?.pair) {
+    parts.push(`<span class="player-pair">${btEscHtml(channel.pair)}</span>`);
+  }
+
+  meta.innerHTML = parts.join('');
+}
+
+function renderAnalysisMarkers(markers) {
+  const panel = document.getElementById('analysis-panel');
+  const container = document.getElementById('analysis-markers');
+  panel.classList.remove('hidden');
+  container.innerHTML = '';
+
+  for (const marker of markers) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `analysis-marker marker-${normalizeMarkerType(marker.type)}`;
+    btn.innerHTML = `
+      <span class="marker-time">${btEscHtml(fmtTime(Number(marker.ts) || 0))}</span>
+      <span class="marker-label">${btEscHtml(marker.label || 'Marker')}</span>
+    `;
+    btn.addEventListener('click', () => seekToMarker(marker));
+    container.appendChild(btn);
+  }
+}
+
+function seekToMarker(marker) {
+  const ts = Number(marker.ts);
+  if (!Number.isFinite(ts) || ts < 0) return;
+
+  try {
+    btPlayer?.seekTo(ts, true);
+    const tsInput = document.getElementById('trade-timestamp');
+    if (tsInput) tsInput.value = String(Math.floor(ts));
+  } catch {}
+}
+
+function normalizeMarkerType(type) {
+  if (type === 'entry' || type === 'exit') return type;
+  return 'discussion';
+}
+
+function getCurrentChannel() {
+  const list = (typeof channels !== 'undefined' ? channels : []);
+  return list.find(ch => ch.channelId === btChannelId) || null;
 }
 
 // ── R:R auto-calc ─────────────────────────────────────────────────────────

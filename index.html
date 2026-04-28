@@ -58,7 +58,10 @@
               <div class="panel-label">Replay</div>
               <h2 id="backtest-player-title">No stream selected</h2>
             </div>
-            <div id="player-meta" class="player-meta"></div>
+            <div class="player-tools">
+              <div id="player-meta" class="player-meta"></div>
+              <button id="btn-analyze-stream" class="ghost-btn" type="button" disabled>Analyze</button>
+            </div>
           </div>
           <div id="backtest-player-shell">
             <div id="backtest-player-empty" class="empty-panel">
@@ -68,6 +71,15 @@
             <div id="backtest-player-frame" class="hidden">
               <div id="backtest-player"></div>
             </div>
+          </div>
+          <div id="analysis-panel" class="analysis-panel hidden">
+            <div class="backtest-section-head">
+              <div>
+                <div class="panel-label">Trade Markers</div>
+                <p id="analysis-status">Run analysis to extract entry, exit, and discussion moments.</p>
+              </div>
+            </div>
+            <div id="analysis-markers" class="analysis-markers"></div>
           </div>
         </div>
 

@@ -8,8 +8,23 @@ const LS_ACTIVE_AUDIO = 'tradingDashboard_activeAudio';
 const LS_API_KEY = 'tradingDashboard_apiKey';
 const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
+// Default currency pair list (global, shared across all channels)
+const DEFAULT_PAIRS = [
+  { label: 'XAU/USD (Gold)',    value: 'XAUUSD' },
+  { label: 'EUR/USD',           value: 'EURUSD' },
+  { label: 'GBP/USD',           value: 'GBPUSD' },
+  { label: 'USD/JPY',           value: 'USDJPY' },
+  { label: 'GBP/JPY',           value: 'GBPJPY' },
+  { label: 'NAS100',            value: 'NAS100' },
+  { label: 'US30 (Dow)',        value: 'US30' },
+  { label: 'BTC/USD (Bitcoin)', value: 'BTCUSD' },
+  { label: 'ETH/USD',           value: 'ETHUSD' },
+  { label: 'USD/CAD',           value: 'USDCAD' },
+];
+
 // ── State ─────────────────────────────────────────────────────────────────
-let channels = [];          // { channelId, name, handle, videoId, isLive, viewers }
+let channels = [];          // { channelId, name, handle, videoId, isLive, viewers, pair }
+let customPairs = [];       // global user-defined pairs { label, value }
 let playerMap = new Map();  // channelId → YT.Player instance
 let activeAudioChannel = null; // channelId with audio on; null = all muted
 let gridCols = 1;  // computed automatically from live count
@@ -27,6 +42,8 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   await loadState();
+  await loadCustomPairs();
+  requestNotificationPermission();
   setupToolbar();
   setupModal();
   injectYouTubeAPI();
@@ -109,6 +126,76 @@ function saveActiveAudio() {
 function saveApiKey(key) {
   apiKey = key.trim();
   localStorage.setItem(LS_API_KEY, apiKey);
+}
+
+// ── Custom Pairs Persistence ──────────────────────────────────────────────
+async function loadCustomPairs() {
+  if (!isLocalHost) {
+    try {
+      const res = await fetch('/.netlify/functions/custom-pairs');
+      if (res.ok) {
+        const remote = await res.json();
+        if (Array.isArray(remote)) { customPairs = remote; return; }
+      }
+    } catch (err) {
+      console.warn('[loadCustomPairs] remote fetch failed:', err.message);
+    }
+  }
+  try {
+    customPairs = JSON.parse(localStorage.getItem('tradingDashboard_customPairs') || '[]');
+  } catch { customPairs = []; }
+}
+
+function saveCustomPairs() {
+  localStorage.setItem('tradingDashboard_customPairs', JSON.stringify(customPairs));
+  if (!isLocalHost) {
+    // Remote is updated per-operation (POST/DELETE) — no bulk save needed here
+  }
+}
+
+// ── Pair Helpers ──────────────────────────────────────────────────────────
+function setPairForChannel(channelId, pairValue) {
+  const ch = channels.find(c => c.channelId === channelId);
+  if (!ch) return;
+  ch.pair = pairValue || null;
+  saveChannels();
+}
+
+async function addCustomPair(label, value) {
+  if (customPairs.some(p => p.value === value)) return; // already exists
+  const pair = { label: label.slice(0, 40), value: value.slice(0, 20) };
+  customPairs.push(pair);
+  saveCustomPairs();
+  if (!isLocalHost) {
+    try {
+      await fetch('/.netlify/functions/custom-pairs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pair),
+      });
+    } catch (err) {
+      console.warn('[addCustomPair] remote save failed:', err.message);
+    }
+  }
+}
+
+// ── Browser Notifications ─────────────────────────────────────────────────
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    // Delay so the page feels loaded before asking
+    setTimeout(() => Notification.requestPermission(), 3000);
+  }
+}
+
+function notifyChannelLive(ch) {
+  const title = `${ch.name || ch.handle || 'Channel'} is LIVE`;
+  const body  = ch.streamTitle || 'Live stream started';
+  // Browser push notification (only when tab is open)
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try { new Notification(title, { body, icon: '/favicon.ico' }); } catch {}
+  }
+  // On-screen toast regardless of permission
+  showToast(`🔴 ${title}`, 'success');
 }
 
 // ── YouTube IFrame API ────────────────────────────────────────────────────
@@ -237,10 +324,12 @@ async function refreshAllChannels() {
 
   for (const ch of channels) {
     try {
+      const wasLive = ch.isLive;
       const videoId = await fetchLiveVideoId(ch.channelId);
       ch.videoId = videoId;
       ch.isLive = !!videoId;
       if (!videoId) ch.viewers = 0;
+      if (!wasLive && ch.isLive) notifyChannelLive(ch);
     } catch (err) {
       console.warn(`[refresh] ${ch.name}: ${err.message}`);
     }
@@ -863,21 +952,117 @@ function renderChannelList() {
     list.innerHTML = '<li class="no-channels">No channels yet. Add one below.</li>';
     return;
   }
+
+  const allPairs = [...DEFAULT_PAIRS, ...customPairs];
+  const pairOptions = [
+    '<option value="">— Select pair —</option>',
+    ...allPairs.map(p => `<option value="${escAttr(p.value)}">${escHtml(p.label)}</option>`),
+  ].join('');
+
   list.innerHTML = channels.map(ch => `
     <li class="${ch.isLive ? 'is-live' : ''}" data-channel-id="${escAttr(ch.channelId)}">
-      <div class="ch-status"></div>
-      <span class="ch-name" title="${escAttr(ch.channelId)}">${escHtml(ch.name || ch.handle || ch.channelId)}</span>
-      ${ch.isLive ? '<span class="ch-live-tag">● LIVE</span>' : ''}
-      <button class="btn-remove-ch" title="Remove channel">&times;</button>
+      <div class="ch-row">
+        <div class="ch-status"></div>
+        <span class="ch-name" title="${escAttr(ch.channelId)}">${escHtml(ch.name || ch.handle || ch.channelId)}</span>
+        ${ch.isLive ? '<span class="ch-live-tag">● LIVE</span>' : ''}
+        <button class="btn-set-url" title="Manually set live stream URL">🔗</button>
+        <button class="btn-remove-ch" title="Remove channel">&times;</button>
+      </div>
+      <div class="ch-pair-row">
+        <select class="ch-pair-select" data-channel-id="${escAttr(ch.channelId)}">
+          ${pairOptions}
+        </select>
+        <button class="btn-add-pair" title="Add custom pair">+</button>
+      </div>
+      <div class="ch-url-row hidden">
+        <input class="ch-url-input" type="text" placeholder="Paste live stream URL (youtube.com/watch?v=...)">
+        <button class="btn-url-confirm">Set</button>
+      </div>
     </li>
   `).join('');
 
-  list.querySelectorAll('.btn-remove-ch').forEach(btn => {
+  // Restore selected pair per channel
+  list.querySelectorAll('.ch-pair-select').forEach(sel => {
+    const ch = channels.find(c => c.channelId === sel.dataset.channelId);
+    sel.value = ch?.pair || '';
+    sel.addEventListener('change', () => setPairForChannel(sel.dataset.channelId, sel.value));
+  });
+
+  // "+" add custom pair — inline form per channel row
+  list.querySelectorAll('.btn-add-pair').forEach(btn => {
     btn.addEventListener('click', () => {
       const li = btn.closest('li');
-      removeChannel(li.dataset.channelId);
+      const existing = li.querySelector('.ch-add-pair-row');
+      if (existing) { existing.remove(); return; }
+      const addRow = document.createElement('div');
+      addRow.className = 'ch-add-pair-row';
+      addRow.innerHTML = `
+        <input class="ch-pair-label-input" type="text" placeholder="Label e.g. EUR/GBP">
+        <input class="ch-pair-value-input" type="text" placeholder="Value e.g. EURGBP">
+        <button class="btn-pair-confirm">Add</button>
+      `;
+      li.appendChild(addRow);
+      addRow.querySelector('.ch-pair-label-input').focus();
+      addRow.querySelector('.btn-pair-confirm').addEventListener('click', async () => {
+        const label = addRow.querySelector('.ch-pair-label-input').value.trim();
+        const value = addRow.querySelector('.ch-pair-value-input').value.trim().toUpperCase();
+        if (!label || !value) { showToast('Both label and value are required', 'error'); return; }
+        await addCustomPair(label, value);
+        showToast(`Pair ${label} added`, 'success');
+        renderChannelList(); // re-render so new pair appears in all dropdowns
+      });
+      addRow.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter') addRow.querySelector('.btn-pair-confirm').click();
+          if (e.key === 'Escape') addRow.remove();
+        });
+      });
     });
   });
+
+  list.querySelectorAll('.btn-remove-ch').forEach(btn => {
+    btn.addEventListener('click', () => removeChannel(btn.closest('li').dataset.channelId));
+  });
+
+  list.querySelectorAll('.btn-set-url').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const urlRow = btn.closest('li').querySelector('.ch-url-row');
+      urlRow.classList.toggle('hidden');
+      if (!urlRow.classList.contains('hidden')) urlRow.querySelector('.ch-url-input').focus();
+    });
+  });
+
+  list.querySelectorAll('.btn-url-confirm').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const li    = btn.closest('li');
+      const input = li.querySelector('.ch-url-input');
+      setStreamUrl(li.dataset.channelId, input.value.trim());
+      input.value = '';
+      li.querySelector('.ch-url-row').classList.add('hidden');
+    });
+  });
+
+  list.querySelectorAll('.ch-url-input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') input.closest('li').querySelector('.btn-url-confirm').click();
+      if (e.key === 'Escape') input.closest('li').querySelector('.ch-url-row').classList.add('hidden');
+    });
+  });
+}
+
+function setStreamUrl(channelId, url) {
+  if (!url) return;
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) { showToast('Could not extract video ID — paste the full YouTube URL', 'error'); return; }
+  const ch = channels.find(c => c.channelId === channelId);
+  if (!ch) return;
+  ch.videoId  = videoId;
+  ch.isLive   = true;
+  ch.manualVideoId = true; // flag: search.list unreliable for this channel
+  saveChannels();
+  renderChannelList();
+  buildGrid();
+  showToast(`${ch.name} stream set — loading now`, 'success');
 }
 
 // ── UI Helpers ────────────────────────────────────────────────────────────

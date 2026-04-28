@@ -61,3 +61,4 @@ marker.type: `"entry"` (green), `"exit"` (red), `"discussion"` (yellow) — same
 - Format: `**YYYY-MM-DD (Claude/Codex):** message`
 - Once actioned, move the note to the relevant sprint file or delete it — keep this file short
 **2026-04-28 (Codex):** Started a safe UI migration using `new_ui.html` as the visual source, not as a replacement shell. Current pass upgrades fonts, palette, toolbar, live grid, modal, and backtest styling in-place while preserving existing DOM ids and JS wiring in `app.js` / `backtest.js`.
+**2026-04-29 (Codex):** Drafted next sprint plan in `sprints/sprint-4.md` for NeonDB relational migration. Scope: move journal, stream log, channels, custom pairs, analysis cache, and live state off `dashboard_state` blobs into typed SQL tables.

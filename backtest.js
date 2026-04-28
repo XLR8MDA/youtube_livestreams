@@ -29,21 +29,25 @@ function setupTabs() {
 }
 
 function switchTab(tab) {
-  const isBacktest = tab === 'backtest';
+  const isLive      = tab === 'live';
+  const isBacktest  = tab === 'backtest';
+  const isStreamLog = tab === 'stream-log';
 
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
   );
-  document.getElementById('grid-container').classList.toggle('hidden', isBacktest);
+  document.getElementById('grid-container').classList.toggle('hidden', !isLive);
   document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
+  document.getElementById('stream-log-panel').classList.toggle('hidden', !isStreamLog);
 
-  // Hide live-only toolbar buttons on backtest tab
+  // Hide live-only toolbar buttons when not on live tab
   ['btn-sync', 'btn-refresh'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.style.display = isBacktest ? 'none' : '';
+    if (el) el.style.display = isLive ? '' : 'none';
   });
 
   if (isBacktest) populateChannelSelect();
+  if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
 }
 
 // ── Channel selector ──────────────────────────────────────────────────────

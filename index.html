@@ -14,6 +14,7 @@
     <nav id="tab-nav" aria-label="Dashboard tabs">
       <button id="tab-live" class="tab-btn active" data-tab="live" type="button">Live</button>
       <button id="tab-backtest" class="tab-btn" data-tab="backtest" type="button">Backtest</button>
+      <button id="tab-stream-log" class="tab-btn" data-tab="stream-log" type="button">Stream Log</button>
     </nav>
 
     <div id="toolbar-right">
@@ -190,6 +191,33 @@
     </div>
   </section>
 
+  <section id="stream-log-panel" class="hidden" aria-labelledby="tab-stream-log">
+    <div class="sl-shell">
+      <header class="sl-header">
+        <div class="sl-filters">
+          <span class="panel-label">Stream Log</span>
+          <select id="sl-days" aria-label="Date range">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <select id="sl-channel" aria-label="Filter by channel">
+            <option value="">All channels</option>
+          </select>
+        </div>
+        <button id="btn-sl-refresh" class="ghost-btn" type="button">&#8635; Refresh</button>
+      </header>
+
+      <div id="sl-content" class="sl-content">
+        <div id="sl-status" class="sl-empty">
+          <div class="big-icon">&#128203;</div>
+          <p>Loading stream log&hellip;</p>
+        </div>
+        <div id="sl-days-list"></div>
+      </div>
+    </div>
+  </section>
+
   <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Manage Channels">
     <div id="modal">
       <div id="modal-header">
@@ -229,5 +257,6 @@
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="backtest.js"></script>
+  <script src="stream-log-ui.js"></script>
 </body>
 </html>

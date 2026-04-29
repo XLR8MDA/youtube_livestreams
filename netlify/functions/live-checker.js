@@ -34,11 +34,17 @@ async function getDb() {
   return sql;
 }
 
+// Returns required minimum gap (minutes) between actual checks based on IST time
 function getCheckIntervalMinutes() {
   const now = new Date();
-  const t   = now.getUTCHours() * 60 + now.getUTCMinutes();
-  if (t >= 750 && t < 990)  return 5;
-  if (t >= 1020 && t < 1170) return 5;
+  const t   = now.getUTCHours() * 60 + now.getUTCMinutes(); // minutes since UTC midnight
+
+  // London Open: 10:30 AM – 2:00 PM IST  →  05:00 – 08:30 UTC
+  if (t >= 300 && t < 510)  return 5;
+  // New York Open: 5:30 PM – 9:30 PM IST  →  12:00 – 16:00 UTC
+  if (t >= 720 && t < 960) return 5;
+  
+  // All other hours
   return 30;
 }
 

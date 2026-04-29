@@ -34,4 +34,4 @@
 
 # Processes one ended stream per run — fetches transcript, runs Groq, writes to stream-log
 [functions."auto-analyze"]
-  schedule = "*/10 * * * *"
+  schedule = "*/5 * * * *"

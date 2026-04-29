@@ -75,8 +75,18 @@ exports.handler = async () => {
     return { statusCode: 200, body: JSON.stringify({ processed: 0 }) };
   }
 
-  // Pop the oldest item (FIFO)
-  const item = pending.shift();
+  // Only process streams that ended at least 30 min ago (YouTube needs time to generate captions)
+  const MIN_AGE_MS = 30 * 60 * 1000;
+  const now = Date.now();
+  const itemIndex = pending.findIndex(p => now - new Date(p.endedAt).getTime() >= MIN_AGE_MS);
+  if (itemIndex === -1) {
+    const oldest = pending[0];
+    const waitMin = Math.ceil((MIN_AGE_MS - (now - new Date(oldest.endedAt).getTime())) / 60_000);
+    console.log(`[auto-analyze] Oldest stream not ready yet — ${waitMin}min remaining`);
+    return { statusCode: 200, body: JSON.stringify({ processed: 0, waitMin }) };
+  }
+
+  const item = pending.splice(itemIndex, 1)[0];
   await dbSet(sql, 'pending-analysis', pending);
 
   console.log(`[auto-analyze] Processing: ${item.channelName} — ${item.videoId}`);
@@ -95,41 +105,73 @@ exports.handler = async () => {
   };
 
   try {
-    // Fetch transcript
-    let raw;
+    // Fetch transcript — try English first, fall back to Hindi, then any language
+    const MAX_RETRIES = 4;
+    let raw, transcriptLang = 'en';
     try {
-      raw = await YoutubeTranscript.fetchTranscript(item.videoId);
+      try {
+        raw = await YoutubeTranscript.fetchTranscript(item.videoId, { lang: 'en' });
+        transcriptLang = 'en';
+      } catch {
+        raw = await YoutubeTranscript.fetchTranscript(item.videoId, { lang: 'hi' });
+        transcriptLang = 'hi';
+        console.log(`[auto-analyze] Using Hindi transcript for ${item.videoId}`);
+      }
     } catch (err) {
       const msg = err.message || String(err);
-      if (msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find')) {
-        logEntry.status = 'no-transcript';
-      } else {
-        logEntry.status = 'error';
-        console.warn(`[auto-analyze] Transcript fetch failed: ${msg}`);
+      const noCaption = msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find');
+      const retries = (item.retries || 0) + 1;
+
+      if (noCaption && retries < MAX_RETRIES) {
+        // Captions not ready yet — re-queue with a 30min delay bump and retry count
+        const retryItem = { ...item, retries, endedAt: new Date(Date.now() - 25 * 60_000).toISOString() };
+        const queue = await dbGet(sql, 'pending-analysis', []);
+        queue.push(retryItem);
+        await dbSet(sql, 'pending-analysis', queue);
+        console.log(`[auto-analyze] No transcript yet for ${item.videoId} — re-queued (attempt ${retries}/${MAX_RETRIES})`);
+        return { statusCode: 200, body: JSON.stringify({ processed: 0, requeued: true, retries }) };
       }
+
+      logEntry.status = noCaption ? 'no-transcript' : 'error';
+      if (!noCaption) console.warn(`[auto-analyze] Transcript fetch failed: ${msg}`);
       await writeLogEntry(sql, logEntry);
       return { statusCode: 200, body: JSON.stringify({ processed: 1, status: logEntry.status }) };
     }
 
     if (!raw || raw.length === 0) {
+      const retries = (item.retries || 0) + 1;
+      if (retries < MAX_RETRIES) {
+        const retryItem = { ...item, retries, endedAt: new Date(Date.now() - 25 * 60_000).toISOString() };
+        const queue = await dbGet(sql, 'pending-analysis', []);
+        queue.push(retryItem);
+        await dbSet(sql, 'pending-analysis', queue);
+        console.log(`[auto-analyze] Empty transcript for ${item.videoId} — re-queued (attempt ${retries}/${MAX_RETRIES})`);
+        return { statusCode: 200, body: JSON.stringify({ processed: 0, requeued: true, retries }) };
+      }
       logEntry.status = 'no-transcript';
       await writeLogEntry(sql, logEntry);
       return { statusCode: 200, body: JSON.stringify({ processed: 1, status: 'no-transcript' }) };
     }
 
-    // Convert to timestamped lines + filter to trading content
+    // Convert to timestamped lines
     const allLines = raw.map(seg => {
       const secs = Math.round((seg.offset ?? 0) / 1000);
       return `[${formatTs(secs)}] ${seg.text.replace(/\s+/g, ' ').trim()}`;
     });
-    const lines = allLines.filter(line => TRADE_KEYWORDS.test(line));
+
+    // For English transcripts apply keyword filter to reduce noise + quota usage.
+    // For Hindi (or other) transcripts skip the filter — English keywords won't match
+    // and the LLM handles multilingual content natively.
+    const lines = transcriptLang === 'en'
+      ? allLines.filter(line => TRADE_KEYWORDS.test(line))
+      : allLines;
 
     let markers = [];
     if (lines.length > 0) {
       const chunks = chunkLines(lines);
       for (let i = 0; i < chunks.length; i++) {
         if (i > 0) await sleep(2000);
-        const chunkMarkers = await analyzeChunk(chunks[i]);
+        const chunkMarkers = await analyzeChunk(chunks[i], transcriptLang);
         markers.push(...chunkMarkers);
       }
       markers.sort((a, b) => a.ts - b.ts);
@@ -194,8 +236,11 @@ async function writeLogEntry(sql, entry) {
 }
 
 // ── Groq call ─────────────────────────────────────────────────────────────
-async function analyzeChunk(lines) {
-  const systemPrompt = `You are a trading analysis assistant. You will receive a timestamped transcript from a trading live stream.
+async function analyzeChunk(lines, lang = 'en') {
+  const langNote = lang !== 'en'
+    ? `The transcript is in ${lang === 'hi' ? 'Hindi' : lang}. Understand it natively and write labels in English.`
+    : '';
+  const systemPrompt = `You are a trading analysis assistant. You will receive a timestamped transcript from a trading live stream. ${langNote}
 Identify every moment where the streamer:
 - Announces a trade entry (buy/sell, long/short, taking a trade)
 - Announces a trade exit (take profit, stop loss, close, out of trade)

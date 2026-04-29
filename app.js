@@ -34,7 +34,7 @@ let slowPollTimer = null;
 let syncTimer     = null;
 let localYoutubeProxyAvailable = false;
 
-const LIVE_EDGE_THRESHOLD_S = 30; // auto-seek if more than 30s behind live edge
+const LIVE_EDGE_THRESHOLD_S = 120; // auto-seek only if >2min behind live edge (normal HLS buffer is 15-30s)
 let apiKey = '';
 let isRefreshing = false;
 
@@ -872,8 +872,12 @@ function startPolling() {
 
   fastPollTimer = setInterval(checkLiveStatus, fast);
   slowPollTimer = setInterval(async () => {
+    // Snapshot live video IDs before refresh
+    const before = channels.filter(c => c.isLive && c.videoId).map(c => c.videoId).sort().join(',');
     await refreshAllChannels();
-    buildGrid();
+    const after = channels.filter(c => c.isLive && c.videoId).map(c => c.videoId).sort().join(',');
+    // Only rebuild grid (which destroys players) if the live set actually changed
+    if (before !== after) buildGrid();
   }, slow);
   syncTimer = setInterval(autoSyncLiveEdge, 60_000); // every 60s: nudge lagging streams to live edge
 }

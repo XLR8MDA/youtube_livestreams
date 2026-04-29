@@ -8,11 +8,35 @@
 
 const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
+function isQuotaError(data) {
+  return data?.error?.errors?.some(e => e.reason === 'quotaExceeded');
+}
+
+async function ytFetch(url, apiKeys) {
+  let lastRes, lastData;
+  for (let i = 0; i < apiKeys.length; i++) {
+    url.searchParams.set('key', apiKeys[i]);
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    lastRes = res;
+    lastData = data;
+    if (res.status === 403 && isQuotaError(data)) {
+      console.warn(`[past-streams] Key ${i + 1} quota exceeded — trying next key`);
+      continue;
+    }
+    return { res, data };
+  }
+  return { res: lastRes, data: lastData };
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') return respond(405, { error: 'Method not allowed' });
 
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) return respond(500, { error: 'YOUTUBE_API_KEY not set' });
+  const apiKeys = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEY_2,
+  ].filter(Boolean);
+  if (!apiKeys.length) return respond(500, { error: 'YOUTUBE_API_KEY not set' });
 
   const { channelId, pageToken } = event.queryStringParameters || {};
   if (!channelId) return respond(400, { error: 'channelId is required' });
@@ -26,11 +50,9 @@ exports.handler = async (event) => {
     searchUrl.searchParams.set('type', 'video');
     searchUrl.searchParams.set('order', 'date');
     searchUrl.searchParams.set('maxResults', '10');
-    searchUrl.searchParams.set('key', apiKey);
     if (pageToken) searchUrl.searchParams.set('pageToken', pageToken);
 
-    const res = await fetch(searchUrl.toString());
-    const data = await res.json();
+    const { res, data } = await ytFetch(searchUrl, apiKeys);
 
     if (!res.ok) {
       const msg = data?.error?.message || `YouTube API error ${res.status}`;

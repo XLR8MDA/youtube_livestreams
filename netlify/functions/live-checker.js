@@ -48,9 +48,33 @@ function getCheckIntervalMinutes() {
   return 30;
 }
 
+function isQuotaError(data) {
+  return data?.error?.errors?.some(e => e.reason === 'quotaExceeded');
+}
+
+async function ytFetch(url, apiKeys) {
+  let lastRes, lastData;
+  for (let i = 0; i < apiKeys.length; i++) {
+    url.searchParams.set('key', apiKeys[i]);
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    lastRes = res;
+    lastData = data;
+    if (res.status === 403 && isQuotaError(data)) {
+      console.warn(`[live-checker] Key ${i + 1} quota exceeded — trying next key`);
+      continue;
+    }
+    return { res, data };
+  }
+  return { res: lastRes, data: lastData };
+}
+
 exports.handler = async (event) => {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey || !process.env.DATABASE_URL) {
+  const apiKeys = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEY_2,
+  ].filter(Boolean);
+  if (!apiKeys.length || !process.env.DATABASE_URL) {
     console.error('[live-checker] Missing env vars');
     return { statusCode: 500 };
   }
@@ -95,10 +119,8 @@ exports.handler = async (event) => {
     const url = new URL(`${YT_API_BASE}/videos`);
     url.searchParams.set('part', 'snippet');
     url.searchParams.set('id', ids);
-    url.searchParams.set('key', apiKey);
     try {
-      const res  = await fetch(url.toString());
-      const data = await res.json();
+      const { data } = await ytFetch(url, apiKeys);
       const liveMap = new Map((data.items || []).map(item => [
         item.id,
         item.snippet?.liveBroadcastContent === 'live',
@@ -122,10 +144,8 @@ exports.handler = async (event) => {
     url.searchParams.set('eventType', 'live');
     url.searchParams.set('type', 'video');
     url.searchParams.set('maxResults', '1');
-    url.searchParams.set('key', apiKey);
     try {
-      const res     = await fetch(url.toString());
-      const data    = await res.json();
+      const { data } = await ytFetch(url, apiKeys);
       const item    = data?.items?.[0];
       const videoId = item?.id?.videoId || null;
       const streamTitle = item?.snippet?.title || null;
@@ -208,19 +228,51 @@ exports.handler = async (event) => {
 async function sendTelegram({ channelName, streamTitle, videoId, dashboardUrl }) {
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
   const videoUrl = videoId ? `https://youtube.com/watch?v=${videoId}` : null;
-  const lines = [
+
+  // Try MarkdownV2 first; fall back to plain text if Telegram rejects it
+  const mdLines = [
     `🔴 *${escMd(channelName)}* is LIVE\\!`,
-    streamTitle ? `📺 ${escMd(streamTitle)}` : null,
-    videoUrl    ? `🎬 [Watch Stream](${videoUrl})` : null,
+    streamTitle  ? `📺 ${escMd(streamTitle)}` : null,
+    videoUrl     ? `🎬 [Watch Stream](${videoUrl})` : null,
     dashboardUrl ? `📊 [Open Dashboard](${dashboardUrl})` : null,
   ].filter(Boolean).join('\n');
 
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method:  'POST',
+  const plainLines = [
+    `🔴 ${channelName} is LIVE!`,
+    streamTitle  ? `📺 ${streamTitle}` : null,
+    videoUrl     ? `🎬 ${videoUrl}` : null,
+    dashboardUrl ? `📊 ${dashboardUrl}` : null,
+  ].filter(Boolean).join('\n');
+
+  const base = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+  // Attempt 1: MarkdownV2
+  const res1 = await fetch(base, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: lines, parse_mode: 'MarkdownV2' }),
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: mdLines, parse_mode: 'MarkdownV2' }),
   });
+  const json1 = await res1.json();
+  if (json1.ok) {
+    console.log(`[live-checker] Telegram sent (MarkdownV2) for ${channelName}`);
+    return;
+  }
+
+  // Attempt 2: plain text fallback
+  console.warn(`[live-checker] MarkdownV2 failed (${json1.description}) — retrying as plain text`);
+  const res2 = await fetch(base, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: plainLines }),
+  });
+  const json2 = await res2.json();
+  if (json2.ok) {
+    console.log(`[live-checker] Telegram sent (plain text) for ${channelName}`);
+  } else {
+    console.error(`[live-checker] Telegram failed entirely for ${channelName}:`, json2.description);
+  }
 }
 
 function escMd(str) {

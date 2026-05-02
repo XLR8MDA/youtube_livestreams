@@ -497,6 +497,30 @@ optgroup {
 .ch-row-clickable { cursor: pointer; }
 .ch-row-clickable:hover td { background: rgba(0,122,96,0.06); }
 
+.ch-day-row { cursor: pointer; }
+.ch-day-row:hover td { background: rgba(0,122,96,0.06); }
+.ch-expand-arrow { font-size: 10px; display: inline-block; margin-right: 5px; transition: transform 0.15s; }
+
+.ch-expand-row td { padding: 0; background: var(--bg2); }
+.ch-expand-row.hidden { display: none; }
+
+.ch-trades-inner { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ch-trades-inner th {
+  padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 600;
+  color: var(--text-muted); border-bottom: 1px solid var(--border); background: var(--bg2);
+}
+.ch-trades-inner td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.ch-trades-inner tr:last-child td { border-bottom: none; }
+
+.ch-dir-long  { color: #22c97a; font-weight: 600; }
+.ch-dir-short { color: #f87171; font-weight: 600; }
+.ch-result-win  { color: #22c97a; font-weight: 600; }
+.ch-result-loss { color: #f87171; font-weight: 600; }
+.ch-result-be   { color: #f59e0b; font-weight: 600; }
+.ch-trade-notes { color: var(--text-muted); font-style: italic; max-width: 180px; }
+.ch-daily-vid-link { color: var(--accent); text-decoration: none; font-size: 13px; }
+.ch-daily-vid-link:hover { color: var(--accent2); }
+
 /* ── Modal ───────────────────────────────────────────────────────────────── */
 #modal-overlay {
   position: fixed;

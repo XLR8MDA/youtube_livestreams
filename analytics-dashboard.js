@@ -39,24 +39,84 @@ async function openChDaily(channelId, channelName) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-    const days = data.days || [];
+    const days   = data.days   || [];
+    const trades = data.trades || [];
     if (!days.length) {
       status.innerHTML = '<p>No journal entries found for this channel.</p>';
       return;
     }
 
+    // Group trades by date for quick lookup
+    const byDate = {};
+    for (const t of trades) {
+      if (!byDate[t.date]) byDate[t.date] = [];
+      byDate[t.date].push(t);
+    }
+
     const tbody = table.querySelector('tbody');
-    tbody.innerHTML = days.map(d => `
-      <tr>
-        <td>${esc(d.date)}</td>
-        <td>${d.trades}</td>
-        <td>${fmtPct(d.winRate)}</td>
-        <td>${fmtRR(d.avgRR)}</td>
-        <td class="stats-win">${d.wins}</td>
-        <td class="stats-loss">${d.losses}</td>
-        <td class="stats-be">${d.be}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = days.map(d => {
+      const dirLabel = [
+        d.longs  ? `${d.longs}L`  : '',
+        d.shorts ? `${d.shorts}S` : '',
+      ].filter(Boolean).join(' / ') || '—';
+
+      const dayTrades = byDate[d.date] || [];
+      const tradeRows = dayTrades.map(t => {
+        const videoLink = t.streamId && t.videoTimestamp != null
+          ? `<a class="ch-daily-vid-link" href="https://youtube.com/watch?v=${esc(t.streamId)}&t=${t.videoTimestamp}s" target="_blank" rel="noopener" title="${esc(t.streamTitle || '')}">▶</a>`
+          : (t.streamId ? `<a class="ch-daily-vid-link" href="https://youtube.com/watch?v=${esc(t.streamId)}" target="_blank" rel="noopener" title="${esc(t.streamTitle || '')}">▶</a>` : '');
+        return `
+          <tr class="ch-trade-row">
+            <td>${esc(t.pair || '—')}</td>
+            <td class="ch-dir-${t.direction}">${esc(t.direction || '—')}</td>
+            <td class="ch-result-${t.result}">${esc(t.result || '—')}</td>
+            <td>${t.entry != null ? t.entry : '—'}</td>
+            <td>${t.stop  != null ? t.stop  : '—'}</td>
+            <td>${t.exit  != null ? t.exit  : '—'}</td>
+            <td>${t.rr    != null ? t.rr + 'R' : '—'}</td>
+            <td class="ch-trade-notes">${esc(t.notes || '')}</td>
+            <td>${videoLink}</td>
+          </tr>`;
+      }).join('');
+
+      const expandId = `chd-expand-${d.date}`;
+      return `
+        <tr class="ch-day-row" data-expand="${expandId}">
+          <td><span class="ch-expand-arrow">▶</span> ${esc(d.date)}</td>
+          <td>${d.trades}</td>
+          <td>${fmtPct(d.winRate)}</td>
+          <td>${fmtRR(d.avgRR)}</td>
+          <td class="stats-win">${d.wins}</td>
+          <td class="stats-loss">${d.losses}</td>
+          <td class="stats-be">${d.be}</td>
+          <td>${dirLabel}</td>
+        </tr>
+        <tr id="${expandId}" class="ch-expand-row hidden">
+          <td colspan="8">
+            <table class="ch-trades-inner">
+              <thead>
+                <tr>
+                  <th>Pair</th><th>Dir</th><th>Result</th>
+                  <th>Entry</th><th>Stop</th><th>Exit</th>
+                  <th>R:R</th><th>Notes</th><th></th>
+                </tr>
+              </thead>
+              <tbody>${tradeRows}</tbody>
+            </table>
+          </td>
+        </tr>`;
+    }).join('');
+
+    // Toggle expand on day row click
+    tbody.querySelectorAll('tr.ch-day-row').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const expandRow = document.getElementById(tr.dataset.expand);
+        const arrow     = tr.querySelector('.ch-expand-arrow');
+        const isOpen    = !expandRow.classList.contains('hidden');
+        expandRow.classList.toggle('hidden', isOpen);
+        arrow.textContent = isOpen ? '▶' : '▼';
+      });
+    });
 
     status.classList.add('hidden');
     table.classList.remove('hidden');

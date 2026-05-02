@@ -9,6 +9,60 @@ function initStatsDashboard() {
     statsLoaded = false;
     loadStatsDashboard();
   });
+
+  document.getElementById('btn-close-ch-daily').addEventListener('click', closeChDaily);
+  document.getElementById('ch-daily-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeChDaily();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeChDaily();
+  });
+}
+
+function closeChDaily() {
+  document.getElementById('ch-daily-overlay').classList.add('hidden');
+}
+
+async function openChDaily(channelId, channelName) {
+  const overlay = document.getElementById('ch-daily-overlay');
+  const status  = document.getElementById('ch-daily-status');
+  const table   = document.getElementById('ch-daily-table');
+
+  document.getElementById('ch-daily-title').textContent = channelName;
+  status.innerHTML = '<p>Loading…</p>';
+  status.classList.remove('hidden');
+  table.classList.add('hidden');
+  overlay.classList.remove('hidden');
+
+  try {
+    const res  = await fetch(`/.netlify/functions/channel-daily?channelId=${encodeURIComponent(channelId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const days = data.days || [];
+    if (!days.length) {
+      status.innerHTML = '<p>No journal entries found for this channel.</p>';
+      return;
+    }
+
+    const tbody = table.querySelector('tbody');
+    tbody.innerHTML = days.map(d => `
+      <tr>
+        <td>${esc(d.date)}</td>
+        <td>${d.trades}</td>
+        <td>${fmtPct(d.winRate)}</td>
+        <td>${fmtRR(d.avgRR)}</td>
+        <td class="stats-win">${d.wins}</td>
+        <td class="stats-loss">${d.losses}</td>
+        <td class="stats-be">${d.be}</td>
+      </tr>
+    `).join('');
+
+    status.classList.add('hidden');
+    table.classList.remove('hidden');
+  } catch (err) {
+    status.innerHTML = `<p>Failed to load: ${esc(err.message)}</p>`;
+  }
 }
 
 function onStatsTabActivated() {
@@ -118,8 +172,8 @@ function renderStatsChannels(rows) {
   tbody.innerHTML = rows.map(row => {
     const label = channelMap.get(row.channelId)?.name || channelMap.get(row.channelId)?.handle || row.channelId;
     return `
-      <tr>
-        <td title="${esc(row.channelId)}">${esc(label)}</td>
+      <tr class="ch-row-clickable" data-channel-id="${esc(row.channelId)}" data-channel-name="${esc(label)}" title="Click to see daily breakdown">
+        <td>${esc(label)}</td>
         <td>${row.trades}</td>
         <td>${fmtPct(row.winRate)}</td>
         <td>${fmtRR(row.avgRR)}</td>
@@ -130,6 +184,10 @@ function renderStatsChannels(rows) {
       </tr>
     `;
   }).join('');
+
+  tbody.querySelectorAll('tr.ch-row-clickable').forEach(tr => {
+    tr.addEventListener('click', () => openChDaily(tr.dataset.channelId, tr.dataset.channelName));
+  });
 }
 
 function renderStatsPairs(rows) {

@@ -357,26 +357,15 @@
   <div id="ch-daily-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Channel Daily Performance">
     <div id="ch-daily-modal">
       <div id="ch-daily-header">
-        <h2 id="ch-daily-title">Channel Performance</h2>
+        <div id="ch-daily-header-left">
+          <h2 id="ch-daily-title">Channel Performance</h2>
+          <div id="ch-daily-summary"></div>
+        </div>
         <button id="btn-close-ch-daily" title="Close">&times;</button>
       </div>
       <div id="ch-daily-body">
         <div id="ch-daily-status"><p>Loading…</p></div>
-        <table id="ch-daily-table" class="stats-table hidden">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Trades</th>
-              <th>Win %</th>
-              <th>Avg R:R</th>
-              <th class="stats-win">W</th>
-              <th class="stats-loss">L</th>
-              <th class="stats-be">BE</th>
-              <th>Dir</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <table id="ch-daily-table" class="stats-table hidden"><thead><tr></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </div>

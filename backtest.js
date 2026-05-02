@@ -442,6 +442,7 @@ function setupJournalForm() {
           channelId:   btChannelId,
           streamId:    btStreamId,
           streamTitle: btStreamTitle,
+          streamDate:  btStreamMeta?.publishedAt || null,
           entry,
         }),
       });

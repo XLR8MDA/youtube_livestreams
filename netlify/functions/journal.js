@@ -76,11 +76,11 @@ exports.handler = async (event) => {
 
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '{}');
-      const { channelId, streamId, streamTitle, entry } = body;
+      const { channelId, streamId, streamTitle, streamDate, entry } = body;
       if (!channelId || !streamId || !entry) return respond(400, { error: 'channelId, streamId, entry required' });
 
       const id = generateId();
-      const createdAt = new Date().toISOString();
+      const createdAt = streamDate ? new Date(streamDate).toISOString() : new Date().toISOString();
 
       await sql`
         INSERT INTO journal_entries (

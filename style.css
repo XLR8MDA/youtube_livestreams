@@ -449,7 +449,10 @@ optgroup {
 
 /* ── Channel Daily Modal ─────────────────────────────────────────────────── */
 #ch-daily-overlay {
-  position: fixed; inset: 0; z-index: 300;
+  position: fixed;
+  top: var(--toolbar-h);
+  left: 0; right: 0; bottom: 0;
+  z-index: 300;
   background: #fff;
   display: flex; flex-direction: column;
 }
@@ -457,18 +460,20 @@ optgroup {
 #ch-daily-modal { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
 #ch-daily-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 24px;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 20px;
   border-bottom: 2px solid #e5e7eb;
   flex-shrink: 0;
 }
 #ch-daily-title { font-size: 17px; font-weight: 700; margin: 0; }
 #ch-daily-summary { font-size: 12px; color: #888; margin-top: 2px; }
 #btn-close-ch-daily {
-  background: none; border: none; font-size: 22px;
-  cursor: pointer; color: #aaa; padding: 0 4px; line-height: 1;
+  background: none; border: 1px solid #e5e7eb; border-radius: 6px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; color: #555; padding: 6px 12px; line-height: 1;
+  white-space: nowrap; flex-shrink: 0;
 }
-#btn-close-ch-daily:hover { color: #111; }
+#btn-close-ch-daily:hover { background: #f3f4f6; color: #111; }
 
 #ch-daily-body { flex: 1; overflow-y: auto; }
 #ch-daily-status { text-align: center; color: #aaa; padding: 60px 0; }
@@ -516,10 +521,22 @@ optgroup {
 .ch-cell-be   { color: #d97706 !important; font-weight: 700; }
 .ch-cell-long  { color: #16a34a !important; font-weight: 700; }
 .ch-cell-short { color: #dc2626 !important; font-weight: 700; }
-.ch-cell-notes { font-family: inherit !important; font-style: italic; color: #6b7280 !important; font-size: 12px; white-space: normal; max-width: 260px; }
+.ch-cell-notes {
+  font-family: inherit !important;
+  font-style: italic;
+  color: #6b7280 !important;
+  font-size: 12px;
+  white-space: normal;
+  width: 320px;
+  min-width: 200px;
+  max-width: 320px;
+  line-height: 1.6;
+  word-break: break-word;
+}
 .ch-cell-rr   { color: #0d9488 !important; font-weight: 700; }
-.ch-daily-vid-link { color: #6b7280; text-decoration: none; font-size: 14px; }
+.ch-daily-vid-link { color: #6b7280; text-decoration: none; font-size: 14px; white-space: nowrap; }
 .ch-daily-vid-link:hover { color: #111; }
+#ch-daily-table td:last-child { width: 32px; text-align: center; padding: 10px 8px; }
 
 .ch-row-clickable { cursor: pointer; }
 .ch-row-clickable:hover td { background: rgba(0,122,96,0.06); }

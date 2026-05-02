@@ -41,7 +41,8 @@ A live trading dashboard that:
 | `netlify/functions/notify.js` | Telegram message sender |
 | `netlify/functions/past-streams.js` | Fetch past livestreams per channel |
 | `netlify/functions/journal.js` | Trade journal CRUD |
-| `netlify/functions/transcript.js` | Fetch YouTube transcript |
+| `netlify/functions/transcript.js` | Fetch YouTube transcript; queues for Whisper if captions unavailable |
+| `netlify/functions/_whisper.js` | Shared Whisper STT module (not a standalone function — prefixed _) |
 | `netlify/functions/analyze-stream.js` | Groq trade marker analysis + NeonDB cache (on-demand, from Backtest tab) |
 | `netlify/functions/auto-analyze.js` | Scheduled (*/10 min) — processes `pending-analysis` queue, writes to `stream-log` |
 | `netlify/functions/extract-trade.js` | POST — receives base64 chart screenshot, calls Groq vision, returns extracted trade fields |
@@ -221,7 +222,11 @@ GET /.netlify/functions/live-checker   ← manual trigger for debugging
 | `TELEGRAM_BOT_TOKEN` | `notify.js`, `live-checker.js` | Telegram Bot API token |
 | `TELEGRAM_CHAT_ID` | `notify.js`, `live-checker.js` | Target chat/channel ID |
 | `DATABASE_URL` | All Netlify functions | NeonDB PostgreSQL connection string |
-| `GROQ_API_KEY` | `analyze-stream.js` | Groq inference API — `llama-3.3-70b-versatile` (12k TPM free tier, chunked) |
+| `GROQ_API_KEY` | `analyze-stream.js`, `auto-analyze.js` | Groq LLM — `llama-3.3-70b-versatile` |
+| `GROQ_API_KEY_1` | `_whisper.js` | Groq Whisper pool key 1 (also fallback if no 1–4 set) |
+| `GROQ_API_KEY_2` | `_whisper.js` | Groq Whisper pool key 2 |
+| `GROQ_API_KEY_3` | `_whisper.js` | Groq Whisper pool key 3 |
+| `GROQ_API_KEY_4` | `_whisper.js` | Groq Whisper pool key 4 |
 | `URL` | `live-checker.js` | Auto-set by Netlify — dashboard URL included in notifications |
 
 ---
@@ -232,6 +237,8 @@ GET /.netlify/functions/live-checker   ← manual trigger for debugging
 - **Global custom pairs** — shared list, each channel picks its active pair independently
 - **Groq for LLM** — OpenAI-compatible API, model `llama-3.3-70b-versatile`, 131k context window
 - **Transcript chunking** — splits at 180k chars to stay within Groq context limits; markers merged and sorted
+- **Whisper STT fallback** — when YouTube captions unavailable, `auto-analyze.js` falls back to `_whisper.js`: downloads lowest-bitrate audio-only stream via `@distube/ytdl-core`, chunks into ≤20MB pieces, transcribes via Groq `whisper-large-v3-turbo`, rotates across `GROQ_API_KEY_1..4` per chunk with 429 backoff. `pending-whisper` queue in NeonDB; processed by scheduled `auto-analyze` after `pending-analysis` is clear
+- **`pending-whisper` queue** — same `dashboard_state` KV store; populated by `analyze-stream.js` (on-demand) and `auto-analyze.js` (after MAX_RETRIES caption failure); consumed by `processWhisperItem()` in `auto-analyze.js`
 - **Notification permission** — requested 3s after page load (not immediately, avoids instant browser rejection)
 - **live-checker state** — persisted in NeonDB so cold-start functions can detect false→true live transitions
 

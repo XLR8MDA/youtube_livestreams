@@ -13,8 +13,9 @@
  * Manual trigger: GET /.netlify/functions/auto-analyze
  */
 
-const { neon }              = require('@neondatabase/serverless');
-const { YoutubeTranscript } = require('youtube-transcript');
+const { neon }                    = require('@neondatabase/serverless');
+const { YoutubeTranscript }       = require('youtube-transcript');
+const { fetchWhisperTranscript }  = require('./_whisper');
 
 const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
@@ -71,8 +72,8 @@ exports.handler = async () => {
   const pending = await dbGet(sql, 'pending-analysis', []) || [];
 
   if (pending.length === 0) {
-    console.log('[auto-analyze] No pending streams');
-    return { statusCode: 200, body: JSON.stringify({ processed: 0 }) };
+    // Caption queue empty — try the Whisper fallback queue
+    return processWhisperItem(sql);
   }
 
   // Only process streams that ended at least 30 min ago (YouTube needs time to generate captions)
@@ -80,10 +81,10 @@ exports.handler = async () => {
   const now = Date.now();
   const itemIndex = pending.findIndex(p => now - new Date(p.endedAt).getTime() >= MIN_AGE_MS);
   if (itemIndex === -1) {
-    const oldest = pending[0];
+    const oldest  = pending[0];
     const waitMin = Math.ceil((MIN_AGE_MS - (now - new Date(oldest.endedAt).getTime())) / 60_000);
-    console.log(`[auto-analyze] Oldest stream not ready yet — ${waitMin}min remaining`);
-    return { statusCode: 200, body: JSON.stringify({ processed: 0, waitMin }) };
+    console.log(`[auto-analyze] Caption queue not ready (${waitMin}min) — checking Whisper queue`);
+    return processWhisperItem(sql);
   }
 
   const item = pending.splice(itemIndex, 1)[0];
@@ -132,10 +133,20 @@ exports.handler = async () => {
         return { statusCode: 200, body: JSON.stringify({ processed: 0, requeued: true, retries }) };
       }
 
-      logEntry.status = noCaption ? 'no-transcript' : 'error';
-      if (!noCaption) console.warn(`[auto-analyze] Transcript fetch failed: ${msg}`);
+      if (noCaption) {
+        // YouTube captions permanently unavailable — hand off to Whisper STT fallback
+        const wQueue = await dbGet(sql, 'pending-whisper', []) || [];
+        if (!wQueue.find(i => i.videoId === item.videoId)) {
+          wQueue.push({ ...item, whisperQueuedAt: new Date().toISOString() });
+          await dbSet(sql, 'pending-whisper', wQueue);
+        }
+        console.log(`[auto-analyze] No YT captions after ${MAX_RETRIES} attempts — Whisper queued: ${item.videoId}`);
+        return { statusCode: 200, body: JSON.stringify({ processed: 0, whisperQueued: true }) };
+      }
+      logEntry.status = 'error';
+      console.warn(`[auto-analyze] Transcript fetch failed: ${msg}`);
       await writeLogEntry(sql, logEntry);
-      return { statusCode: 200, body: JSON.stringify({ processed: 1, status: logEntry.status }) };
+      return { statusCode: 200, body: JSON.stringify({ processed: 1, status: 'error' }) };
     }
 
     if (!raw || raw.length === 0) {
@@ -207,6 +218,94 @@ exports.handler = async () => {
   console.log(`[auto-analyze] Done: ${logEntry.channelName} — status=${logEntry.status} markers=${logEntry.markerCount}`);
   return { statusCode: 200, body: JSON.stringify({ processed: 1, status: logEntry.status, markers: logEntry.markerCount }) };
 };
+
+// ── Whisper STT fallback ──────────────────────────────────────────────────
+async function processWhisperItem(sql) {
+  const queue = await dbGet(sql, 'pending-whisper', []) || [];
+  if (!queue.length) {
+    console.log('[auto-analyze] No pending streams (caption or whisper)');
+    return { statusCode: 200, body: JSON.stringify({ processed: 0 }) };
+  }
+
+  const item = queue.shift();
+  await dbSet(sql, 'pending-whisper', queue);
+
+  console.log(`[auto-analyze] Whisper STT: ${item.channelName || item.channelId} — ${item.videoId}`);
+
+  const logEntry = {
+    videoId:     item.videoId,
+    channelId:   item.channelId,
+    channelName: item.channelName || item.channelId,
+    streamTitle: item.streamTitle || '',
+    endedAt:     item.endedAt || new Date().toISOString(),
+    analyzedAt:  new Date().toISOString(),
+    status:      'error',
+    hasTraces:   false,
+    markerCount: 0,
+    markers:     [],
+  };
+
+  try {
+    const raw = await fetchWhisperTranscript(item.videoId);
+
+    if (!raw || raw.length === 0) {
+      logEntry.status = 'no-transcript';
+      await writeLogEntry(sql, logEntry);
+      return { statusCode: 200, body: JSON.stringify({ processed: 1, status: 'no-transcript', source: 'whisper' }) };
+    }
+
+    // Convert to timestamped lines — same shape the LLM pipeline expects
+    const allLines = raw.map(seg => {
+      const secs = seg.offset;
+      return `[${formatTs(secs)}] ${seg.text.replace(/\s+/g, ' ').trim()}`;
+    });
+
+    // Apply keyword filter to reduce noise and LLM token usage
+    const lines = allLines.filter(line => TRADE_KEYWORDS.test(line));
+
+    let markers = [];
+    if (lines.length > 0) {
+      const chunks = chunkLines(lines);
+      for (let i = 0; i < chunks.length; i++) {
+        if (i > 0) await sleep(2000);
+        const chunkMarkers = await analyzeChunk(chunks[i], 'en');
+        markers.push(...chunkMarkers);
+      }
+      markers.sort((a, b) => a.ts - b.ts);
+    }
+
+    logEntry.status      = 'analyzed';
+    logEntry.hasTraces   = markers.length > 0;
+    logEntry.markerCount = markers.length;
+    logEntry.markers     = markers;
+
+    // Cache in stream_analysis so the Backtest tab immediately benefits
+    await sql`
+      INSERT INTO stream_analysis (video_id, channel_id, markers, analyzed_at)
+      VALUES (${item.videoId}, ${item.channelId}, ${JSON.stringify(markers)}::jsonb, NOW())
+      ON CONFLICT (video_id) DO UPDATE SET
+        markers     = EXCLUDED.markers,
+        analyzed_at = NOW()
+    `;
+
+    if (markers.length > 0) {
+      await sendTelegramSummary(item, markers).catch(err =>
+        console.warn('[auto-analyze] Telegram summary failed:', err.message)
+      );
+    }
+
+  } catch (err) {
+    console.error('[auto-analyze] Whisper analysis failed:', err.message);
+    logEntry.status = 'error';
+  }
+
+  await writeLogEntry(sql, logEntry);
+  console.log(`[auto-analyze] Whisper done: ${logEntry.channelName} — status=${logEntry.status} markers=${logEntry.markerCount}`);
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ processed: 1, status: logEntry.status, markers: logEntry.markerCount, source: 'whisper' }),
+  };
+}
 
 // ── Stream log write ──────────────────────────────────────────────────────
 async function writeLogEntry(sql, entry) {

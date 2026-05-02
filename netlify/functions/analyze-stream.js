@@ -54,14 +54,22 @@ exports.handler = async (event) => {
       if (rows.length) return respond(200, { cached: true, markers: rows[0].markers || [] });
     }
 
-    // Fetch transcript
+    // Fetch transcript — YouTube captions first, Whisper queue as fallback
     let raw;
     try {
       raw = await YoutubeTranscript.fetchTranscript(videoId);
     } catch (err) {
-      const msg = err.message || String(err);
-      if (msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find')) {
-        return respond(404, { error: 'Transcript not available for this video' });
+      const msg       = err.message || String(err);
+      const noCaption = msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find');
+      if (noCaption) {
+        // Queue for Whisper STT — auto-analyze (runs every 5 min) will handle it
+        await enqueueWhisper(sql, videoId, channelId);
+        return respond(200, {
+          cached:         false,
+          markers:        [],
+          pendingWhisper: true,
+          message:        'YouTube captions unavailable — queued for Whisper transcription. Auto-analysis will complete within 5–10 minutes.',
+        });
       }
       throw err;
     }
@@ -177,6 +185,32 @@ function chunkLines(lines) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Push videoId into the pending-whisper queue (processed by scheduled auto-analyze)
+async function enqueueWhisper(sql, videoId, channelId) {
+  try {
+    // Ensure dashboard_state table exists (auto-analyze normally owns this)
+    await sql`
+      CREATE TABLE IF NOT EXISTS dashboard_state (
+        key        TEXT PRIMARY KEY,
+        value      JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    const rows  = await sql`SELECT value FROM dashboard_state WHERE key = 'pending-whisper'`;
+    const queue = rows.length ? (rows[0].value || []) : [];
+    if (queue.find(i => i.videoId === videoId)) return; // already queued
+    queue.push({ videoId, channelId, endedAt: new Date().toISOString() });
+    await sql`
+      INSERT INTO dashboard_state (key, value)
+      VALUES ('pending-whisper', ${JSON.stringify(queue)}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+    console.log(`[analyze-stream] Whisper queued: ${videoId}`);
+  } catch (err) {
+    console.warn('[analyze-stream] Failed to enqueue for Whisper:', err.message);
+  }
+}
 
 function respond(statusCode, body) {
   return {

@@ -228,6 +228,13 @@ async function analyzeStream(videoId, channelId) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
+    // Whisper STT fallback — YouTube captions unavailable, queued for background processing
+    if (data.pendingWhisper) {
+      status.textContent = 'YouTube captions unavailable — queued for Whisper transcription. Check back in 5–10 minutes.';
+      btShowToast('Whisper transcription queued — auto-analysis will complete shortly', 'info');
+      return;
+    }
+
     const markers = Array.isArray(data.markers) ? data.markers : [];
     btMarkers = markers;
 

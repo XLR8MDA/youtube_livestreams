@@ -28,24 +28,21 @@ async function getDb() {
       last_video_id      TEXT,
       stream_title       TEXT,
       last_notified_at   TIMESTAMPTZ,
+      last_searched_at   TIMESTAMPTZ,
       updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE live_state ADD COLUMN IF NOT EXISTS last_searched_at TIMESTAMPTZ`;
   return sql;
 }
 
-// Returns required minimum gap (minutes) between actual checks based on IST time
-function getCheckIntervalMinutes() {
+// Returns true only during active IST trading windows (Mon–Fri enforced by cron)
+// Window 1: 9:00 AM – 12:00 PM IST  →  03:30 – 06:30 UTC (210–390 min)
+// Window 2: 4:00 PM –  9:00 PM IST  →  10:30 – 15:30 UTC (630–930 min)
+function isActiveWindow() {
   const now = new Date();
-  const t   = now.getUTCHours() * 60 + now.getUTCMinutes(); // minutes since UTC midnight
-
-  // London Open: 10:30 AM – 2:00 PM IST  →  05:00 – 08:30 UTC
-  if (t >= 300 && t < 510)  return 5;
-  // New York Open: 5:30 PM – 9:30 PM IST  →  12:00 – 16:00 UTC
-  if (t >= 720 && t < 960) return 5;
-  
-  // All other hours
-  return 30;
+  const t   = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return (t >= 210 && t < 390) || (t >= 630 && t < 930);
 }
 
 function isQuotaError(data) {
@@ -79,26 +76,13 @@ exports.handler = async (event) => {
     return { statusCode: 500 };
   }
 
-  const sql      = await getDb();
-  const interval = getCheckIntervalMinutes();
-
   const isManual = event?.httpMethod === 'GET';
-  if (!isManual) {
-    const rows = await sql`SELECT value FROM dashboard_state WHERE key = 'live-checker-last-run'`;
-    const lastRun = rows.length ? rows[0].value : null;
-    if (lastRun) {
-      const msSinceLast = Date.now() - new Date(lastRun).getTime();
-      const minSinceLast = msSinceLast / 60_000;
-      if (minSinceLast < interval - 0.5) {
-        console.log(`[live-checker] Skipping — off-peak, ${minSinceLast.toFixed(1)}min since last run`);
-        return { statusCode: 200, body: JSON.stringify({ skipped: true, interval }) };
-      }
-    }
-    await sql`
-      INSERT INTO dashboard_state (key, value) VALUES ('live-checker-last-run', ${JSON.stringify(new Date().toISOString())}::jsonb)
-      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-    `;
+  if (!isManual && !isActiveWindow()) {
+    console.log('[live-checker] Outside active window — skipping');
+    return { statusCode: 200, body: JSON.stringify({ skipped: true, reason: 'outside-window' }) };
   }
+
+  const sql = await getDb();
 
   const channels = await sql`SELECT * FROM channels WHERE is_active = TRUE`;
   if (channels.length === 0) return { statusCode: 200 };
@@ -106,7 +90,12 @@ exports.handler = async (event) => {
   const prevStateRows = await sql`SELECT * FROM live_state`;
   const prevState = {};
   for (const r of prevStateRows) {
-    prevState[r.channel_id] = { isLive: r.is_live, videoId: r.last_video_id, streamTitle: r.stream_title };
+    prevState[r.channel_id] = {
+      isLive: r.is_live,
+      videoId: r.last_video_id,
+      streamTitle: r.stream_title,
+      lastSearchedAt: r.last_searched_at ? new Date(r.last_searched_at) : null,
+    };
   }
   
   const newState  = { ...prevState };
@@ -135,9 +124,15 @@ exports.handler = async (event) => {
     }
   }
 
-  // Search channels with no known videoId
+  // Search channels with no known videoId — throttled to once every 15 min
+  const SEARCH_INTERVAL_MS = 15 * 60 * 1000;
   const withoutVideo = channels.filter(c => !newState[c.channel_id]?.videoId);
   for (const ch of withoutVideo) {
+    const lastSearched = prevState[ch.channel_id]?.lastSearchedAt;
+    if (!isManual && lastSearched && (Date.now() - lastSearched.getTime()) < SEARCH_INTERVAL_MS) {
+      console.log(`[live-checker] Skipping search for ${ch.name} — searched ${Math.round((Date.now() - lastSearched.getTime()) / 60000)}min ago`);
+      continue;
+    }
     const url = new URL(`${YT_API_BASE}/search`);
     url.searchParams.set('part', 'id,snippet');
     url.searchParams.set('channelId', ch.channel_id);
@@ -146,10 +141,10 @@ exports.handler = async (event) => {
     url.searchParams.set('maxResults', '1');
     try {
       const { data } = await ytFetch(url, apiKeys);
-      const item    = data?.items?.[0];
-      const videoId = item?.id?.videoId || null;
+      const item        = data?.items?.[0];
+      const videoId     = item?.id?.videoId || null;
       const streamTitle = item?.snippet?.title || null;
-      newState[ch.channel_id] = { isLive: !!videoId, videoId, streamTitle };
+      newState[ch.channel_id] = { ...newState[ch.channel_id], isLive: !!videoId, videoId, streamTitle, lastSearchedAt: new Date() };
     } catch (err) {
       console.warn(`[live-checker] search failed for ${ch.name}:`, err.message);
     }
@@ -165,13 +160,14 @@ exports.handler = async (event) => {
     // Update live_state table
     const s = newState[ch.channel_id];
     await sql`
-      INSERT INTO live_state (channel_id, is_live, last_video_id, stream_title, last_notified_at, updated_at)
+      INSERT INTO live_state (channel_id, is_live, last_video_id, stream_title, last_notified_at, last_searched_at, updated_at)
       VALUES (
         ${ch.channel_id},
         ${s.isLive},
         ${s.videoId},
         ${s.streamTitle},
         ${!wasLive && isNowLive ? new Date().toISOString() : (prevState[ch.channel_id]?.lastNotifiedAt || null)},
+        ${s.lastSearchedAt?.toISOString() || prevState[ch.channel_id]?.lastSearchedAt?.toISOString() || null},
         NOW()
       )
       ON CONFLICT (channel_id) DO UPDATE SET
@@ -179,6 +175,7 @@ exports.handler = async (event) => {
         last_video_id = EXCLUDED.last_video_id,
         stream_title = EXCLUDED.stream_title,
         last_notified_at = EXCLUDED.last_notified_at,
+        last_searched_at = EXCLUDED.last_searched_at,
         updated_at = NOW()
     `;
   }

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.11",
     "@neondatabase/serverless": "^0.10.4",
     "youtube-transcript": "^1.2.1"
   },

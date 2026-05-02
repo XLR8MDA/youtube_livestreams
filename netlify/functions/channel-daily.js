@@ -50,7 +50,7 @@ exports.handler = async (event) => {
         stream_id
       FROM journal_entries
       WHERE channel_id = ${channelId}
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC
     `;
 
     const days = dayRows.map(r => ({

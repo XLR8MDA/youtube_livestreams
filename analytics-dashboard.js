@@ -25,23 +25,19 @@ function closeChDaily() {
 
 function fmtDate(iso) {
   if (!iso) return '—';
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' });
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' });
 }
 
 async function openChDaily(channelId, channelName) {
   const overlay = document.getElementById('ch-daily-overlay');
   const status  = document.getElementById('ch-daily-status');
-  const body    = document.getElementById('ch-daily-body');
+  const table   = document.getElementById('ch-daily-table');
 
   document.getElementById('ch-daily-title').textContent = channelName;
-  document.getElementById('ch-daily-summary').innerHTML = '';
-  status.style.display = '';
+  document.getElementById('ch-daily-summary').textContent = '';
   status.innerHTML = '<p>Loading…</p>';
-
-  // Clear previous day sections
-  body.querySelectorAll('.ch-day-section').forEach(el => el.remove());
-
+  status.classList.remove('hidden');
+  table.classList.add('hidden');
   overlay.classList.remove('hidden');
 
   try {
@@ -52,112 +48,58 @@ async function openChDaily(channelId, channelName) {
     const days   = data.days   || [];
     const trades = data.trades || [];
 
-    if (!days.length) {
+    if (!trades.length) {
       status.innerHTML = '<p>No journal entries found for this channel.</p>';
       return;
     }
 
-    // Header summary chips
-    const allTrades  = days.reduce((s, d) => s + d.trades, 0);
-    const allWins    = days.reduce((s, d) => s + d.wins,   0);
-    const totalWR    = allTrades ? Number(((allWins / allTrades) * 100).toFixed(1)) : null;
-    const allRR      = trades.filter(t => t.rr != null).map(t => t.rr);
-    const avgRR      = allRR.length ? Number((allRR.reduce((a, b) => a + b, 0) / allRR.length).toFixed(2)) : null;
-    const allLosses  = days.reduce((s, d) => s + d.losses, 0);
+    // Summary line in header
+    const totalTrades = trades.length;
+    const totalWins   = trades.filter(t => t.result === 'win').length;
+    const rrVals      = trades.filter(t => t.rr != null).map(t => t.rr);
+    const avgRR       = rrVals.length ? (rrVals.reduce((a, b) => a + b, 0) / rrVals.length).toFixed(2) : null;
+    const wr          = totalTrades ? ((totalWins / totalTrades) * 100).toFixed(1) : null;
+    document.getElementById('ch-daily-summary').textContent =
+      [totalTrades + ' trades', wr != null ? wr + '% WR' : null, avgRR ? avgRR + 'R avg' : null].filter(Boolean).join('  ·  ');
 
-    const summaryEl = document.getElementById('ch-daily-summary');
-    summaryEl.innerHTML = [
-      `<span class="ch-summary-chip">${allTrades} trade${allTrades !== 1 ? 's' : ''}</span>`,
-      totalWR != null ? `<span class="ch-summary-chip ${totalWR >= 50 ? 'green' : 'red'}">${totalWR}% WR</span>` : '',
-      avgRR   != null ? `<span class="ch-summary-chip teal">${avgRR}R avg</span>` : '',
-    ].join('');
+    // Build table rows grouped by date
+    const tbody = table.querySelector('tbody');
+    let html = '';
+    let lastDate = null;
 
-    // Group trades by date
-    const byDate = {};
     for (const t of trades) {
-      (byDate[t.date] = byDate[t.date] || []).push(t);
-    }
-
-    status.style.display = 'none';
-
-    // Render day sections
-    for (const d of days) {
-      const dayTrades = byDate[d.date] || [];
-      const wrClass   = d.winRate == null ? '' : d.winRate >= 50 ? 'wr' : 'wr bad';
-
-      const dirChips = [
-        d.longs  ? `<span class="ch-day-chip dir">${d.longs}L</span>`  : '',
-        d.shorts ? `<span class="ch-day-chip dir">${d.shorts}S</span>` : '',
-      ].join('');
-
-      const tradeCards = dayTrades.map(t => {
-        const result = t.result || 'be';
-        const videoLink = t.streamId
-          ? `<a class="ch-daily-vid-link" href="https://youtube.com/watch?v=${esc(t.streamId)}${t.videoTimestamp != null ? '&t=' + t.videoTimestamp + 's' : ''}" target="_blank" rel="noopener">▶ Watch</a>`
+      if (t.date !== lastDate) {
+        const day = days.find(d => d.date === t.date);
+        const summary = day
+          ? ` — ${day.trades} trade${day.trades !== 1 ? 's' : ''}  ${day.winRate != null ? day.winRate + '%' : ''}  ${day.avgRR != null ? day.avgRR + 'R' : ''}  W${day.wins} L${day.losses} BE${day.be}`.trim()
           : '';
-        return `
-          <div class="ch-trade-card ${result}">
-            <div class="ch-trade-badges">
-              <span class="ch-badge pair">${esc(t.pair || '—')}</span>
-              <span class="ch-badge ${t.direction || ''}">${esc((t.direction || '—').toUpperCase())}</span>
-              <span class="ch-badge ${result}">${result.toUpperCase()}</span>
-            </div>
-            <div class="ch-trade-prices">
-              <div class="ch-price-item">
-                <span class="ch-price-label">Entry</span>
-                <span class="ch-price-value">${t.entry != null ? t.entry : '—'}</span>
-              </div>
-              <div class="ch-price-item">
-                <span class="ch-price-label">Stop</span>
-                <span class="ch-price-value">${t.stop != null ? t.stop : '—'}</span>
-              </div>
-              <div class="ch-price-item">
-                <span class="ch-price-label">Exit</span>
-                <span class="ch-price-value">${t.exit != null ? t.exit : '—'}</span>
-              </div>
-              <div class="ch-price-item rr">
-                <span class="ch-price-label">R:R</span>
-                <span class="ch-price-value">${t.rr != null ? t.rr + 'R' : '—'}</span>
-              </div>
-            </div>
-            <div class="ch-trade-right">
-              ${t.notes ? `<div class="ch-trade-notes-text">${esc(t.notes)}</div>` : ''}
-              ${videoLink}
-            </div>
-          </div>`;
-      }).join('');
+        html += `<tr class="ch-date-group-row"><td colspan="9">${fmtDate(t.date)}${esc(summary)}</td></tr>`;
+        lastDate = t.date;
+      }
 
-      const section = document.createElement('div');
-      section.className = 'ch-day-section';
-      section.innerHTML = `
-        <div class="ch-day-header">
-          <span class="ch-day-arrow">▶</span>
-          <span class="ch-day-date">${fmtDate(d.date)}</span>
-          <div class="ch-day-chips">
-            <span class="ch-day-chip neutral">${d.trades} trade${d.trades !== 1 ? 's' : ''}</span>
-            ${d.winRate != null ? `<span class="ch-day-chip ${wrClass}">${d.winRate}%</span>` : ''}
-            ${d.avgRR   != null ? `<span class="ch-day-chip rr">${d.avgRR}R</span>` : ''}
-            ${d.wins  ? `<span class="ch-day-chip win">W ${d.wins}</span>`  : ''}
-            ${d.losses? `<span class="ch-day-chip loss">L ${d.losses}</span>`: ''}
-            ${d.be    ? `<span class="ch-day-chip be">BE ${d.be}</span>`    : ''}
-            ${dirChips}
-          </div>
-        </div>
-        <div class="ch-day-trades">${tradeCards}</div>`;
+      const result = t.result || '';
+      const videoLink = t.streamId
+        ? `<a class="ch-daily-vid-link" href="https://youtube.com/watch?v=${esc(t.streamId)}${t.videoTimestamp != null ? '&t=' + t.videoTimestamp + 's' : ''}" target="_blank" rel="noopener" title="${esc(t.streamTitle || '')}">▶</a>`
+        : '';
 
-      const header     = section.querySelector('.ch-day-header');
-      const tradesDiv  = section.querySelector('.ch-day-trades');
-      const arrow      = section.querySelector('.ch-day-arrow');
-
-      header.addEventListener('click', () => {
-        const open = tradesDiv.classList.toggle('open');
-        arrow.classList.toggle('open', open);
-      });
-
-      body.appendChild(section);
+      html += `
+        <tr class="ch-row-${result}">
+          <td>${esc(t.pair || '—')}</td>
+          <td class="ch-cell-${t.direction}">${esc((t.direction || '—').toUpperCase())}</td>
+          <td class="ch-cell-${result}">${result.toUpperCase() || '—'}</td>
+          <td>${t.entry != null ? t.entry : '—'}</td>
+          <td>${t.stop  != null ? t.stop  : '—'}</td>
+          <td>${t.exit  != null ? t.exit  : '—'}</td>
+          <td class="ch-cell-rr">${t.rr != null ? t.rr + 'R' : '—'}</td>
+          <td class="ch-cell-notes">${esc(t.notes || '')}</td>
+          <td>${videoLink}</td>
+        </tr>`;
     }
+
+    tbody.innerHTML = html;
+    status.classList.add('hidden');
+    table.classList.remove('hidden');
   } catch (err) {
-    status.style.display = '';
     status.innerHTML = `<p>Failed to load: ${esc(err.message)}</p>`;
   }
 }

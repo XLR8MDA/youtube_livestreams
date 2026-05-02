@@ -20,6 +20,7 @@ function initBacktest() {
   setupJournalForm();
   setupJournalPairSelect();
   setupAnalyzeButton();
+  setupScreenshotPaste();
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────
@@ -586,6 +587,136 @@ function renderAnalyticsTable(rows) {
       <td style="color:#6080ff">${r.be}</td>
     </tr>
   `).join('');
+}
+
+// ── Screenshot auto-fill ─────────────────────────────────────────────────
+function setupScreenshotPaste() {
+  const dropArea = document.getElementById('screenshot-drop-area');
+  const pasteBtn = document.getElementById('btn-paste-screenshot');
+  const clearBtn = document.getElementById('btn-clear-screenshot');
+
+  // Drag-and-drop
+  dropArea.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropArea.classList.add('drag-over');
+  });
+  dropArea.addEventListener('dragleave', () => dropArea.classList.remove('drag-over'));
+  dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) processScreenshot(file);
+  });
+
+  // Paste button — remind user to press Ctrl+V
+  pasteBtn.addEventListener('click', () => {
+    btShowToast('Press Ctrl+V anywhere to paste your screenshot', 'info');
+  });
+
+  // Global paste listener
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) { processScreenshot(file); break; }
+      }
+    }
+  });
+
+  clearBtn.addEventListener('click', clearScreenshot);
+}
+
+function clearScreenshot() {
+  document.getElementById('screenshot-preview').classList.add('hidden');
+  document.getElementById('screenshot-drop-area').classList.remove('hidden');
+  const status = document.getElementById('screenshot-status');
+  status.textContent = '';
+  status.className = 'screenshot-status hidden';
+  document.getElementById('screenshot-img').src = '';
+}
+
+async function processScreenshot(file) {
+  const dropArea = document.getElementById('screenshot-drop-area');
+  const preview  = document.getElementById('screenshot-preview');
+  const img      = document.getElementById('screenshot-img');
+  const status   = document.getElementById('screenshot-status');
+
+  // Show preview immediately
+  img.src = URL.createObjectURL(file);
+  dropArea.classList.add('hidden');
+  preview.classList.remove('hidden');
+  status.textContent = 'Extracting trade details…';
+  status.className   = 'screenshot-status extracting';
+
+  try {
+    const base64 = await fileToBase64(file);
+
+    const existingPairs = [
+      ...(typeof DEFAULT_PAIRS !== 'undefined' ? DEFAULT_PAIRS : []),
+      ...(typeof customPairs   !== 'undefined' ? customPairs   : []),
+    ];
+
+    const res = await fetch('/.netlify/functions/extract-trade', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ imageBase64: base64, mimeType: file.type, pairs: existingPairs }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    fillFormFromExtraction(data, existingPairs);
+    status.textContent = 'Details extracted — review and tweak before saving.';
+    status.className   = 'screenshot-status success';
+  } catch (err) {
+    status.textContent = `Extraction failed: ${err.message}`;
+    status.className   = 'screenshot-status error';
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function fillFormFromExtraction(data, existingPairs) {
+  const { pair, entry, stop, exit, direction, notes } = data;
+
+  // Pair — match existing or open the add-pair row pre-filled
+  if (pair) {
+    const sel   = document.getElementById('trade-pair');
+    const match = existingPairs.find(p => p.value.toUpperCase() === pair.toUpperCase());
+    if (match) {
+      sel.value = match.value;
+    } else {
+      document.getElementById('trade-pair-label-in').value = pair;
+      document.getElementById('trade-pair-value-in').value = pair.toUpperCase();
+      document.getElementById('trade-pair-add-row').classList.remove('hidden');
+      btShowToast(`Pair "${pair}" not in list — confirm to add it`, 'info');
+    }
+  }
+
+  if (direction) {
+    document.getElementById('trade-direction').value = direction;
+  }
+
+  if (entry != null) document.getElementById('trade-entry').value = entry;
+  if (exit  != null) document.getElementById('trade-exit').value  = exit;
+  if (stop  != null) document.getElementById('trade-stop').value  = stop;
+
+  if (notes) {
+    const notesEl = document.getElementById('trade-notes');
+    if (!notesEl.value) notesEl.value = notes;
+  }
+
+  calcRR();
+  btShowToast('Form filled from screenshot', 'success');
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

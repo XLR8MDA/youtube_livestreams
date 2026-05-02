@@ -124,6 +124,20 @@
             </div>
           </div>
 
+          <!-- Screenshot auto-fill zone -->
+          <div id="screenshot-zone" class="screenshot-zone">
+            <div id="screenshot-drop-area" class="screenshot-drop-area">
+              <span class="screenshot-icon">&#128247;</span>
+              <span>Drop chart screenshot here, or</span>
+              <button id="btn-paste-screenshot" type="button" class="ghost-btn">Paste (Ctrl+V)</button>
+            </div>
+            <div id="screenshot-preview" class="screenshot-preview hidden">
+              <img id="screenshot-img" src="" alt="Chart preview">
+              <button id="btn-clear-screenshot" type="button" class="ghost-btn" title="Clear screenshot">&#10005;</button>
+            </div>
+            <div id="screenshot-status" class="screenshot-status hidden"></div>
+          </div>
+
           <form id="journal-form">
             <div class="pair-row">
               <label class="pair-label-text"><span>Pair / Symbol</span></label>

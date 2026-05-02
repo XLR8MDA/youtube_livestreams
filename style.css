@@ -1345,6 +1345,83 @@ optgroup {
   gap: 5px;
 }
 
+/* ── Screenshot paste zone ─────────────────────────────────────────────── */
+.screenshot-zone {
+  margin-bottom: 12px;
+}
+
+.screenshot-drop-area {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted, #888);
+  font-size: 0.82rem;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: default;
+}
+
+.screenshot-drop-area.drag-over {
+  border-color: var(--accent);
+  background: rgba(99, 179, 237, 0.06);
+}
+
+.screenshot-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.screenshot-preview {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card-bg, #111);
+}
+
+.screenshot-preview img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  display: block;
+}
+
+#btn-clear-screenshot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.7rem;
+  line-height: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screenshot-status {
+  font-size: 0.78rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  margin-top: 5px;
+}
+
+.screenshot-status.extracting { color: var(--muted, #888); }
+.screenshot-status.success    { color: var(--accent); }
+.screenshot-status.error      { color: var(--live-red); }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+
 .journal-entry.result-win  { border-left: 3px solid var(--accent); }
 .journal-entry.result-loss { border-left: 3px solid var(--live-red); }
 .journal-entry.result-be   { border-left: 3px solid #2260b0; }

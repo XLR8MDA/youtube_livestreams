@@ -44,6 +44,7 @@ A live trading dashboard that:
 | `netlify/functions/transcript.js` | Fetch YouTube transcript |
 | `netlify/functions/analyze-stream.js` | Groq trade marker analysis + NeonDB cache (on-demand, from Backtest tab) |
 | `netlify/functions/auto-analyze.js` | Scheduled (*/10 min) — processes `pending-analysis` queue, writes to `stream-log` |
+| `netlify/functions/extract-trade.js` | POST — receives base64 chart screenshot, calls Groq vision, returns extracted trade fields |
 | `netlify/functions/stream-log.js` | GET stream log grouped by date, filterable by days/channelId |
 | `netlify.toml` | Function schedules and config |
 | `package.json` | Dependencies |
@@ -184,6 +185,14 @@ DELETE /.netlify/functions/journal?channelId=UC...&streamId=...&entryId=...
 GET /.netlify/functions/transcript?videoId=abc123
 → { transcript: [{ text, offset }] }   offset = seconds from start
 → 404 { error: "Transcript not available..." } if captions disabled
+```
+
+### `extract-trade`
+```
+POST /.netlify/functions/extract-trade
+     body: { imageBase64: string, mimeType: string, pairs: [{ label, value }] }
+     → { pair, entry, stop, exit, direction, notes }
+     Conventions: blue candles=up, black=down; left scale: green=TP, grey=entry, red=SL
 ```
 
 ### `analyze-stream`

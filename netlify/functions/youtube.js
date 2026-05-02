@@ -19,6 +19,7 @@ exports.handler = async (event) => {
   const apiKeys = [
     process.env.YOUTUBE_API_KEY,
     process.env.YOUTUBE_API_KEY_2,
+    process.env.YOUTUBE_API_KEY_3,
   ].filter(Boolean);
 
   console.log('[youtube fn] keys available:', apiKeys.length, '| method:', event.httpMethod);

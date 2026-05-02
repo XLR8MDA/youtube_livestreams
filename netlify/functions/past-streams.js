@@ -35,6 +35,7 @@ exports.handler = async (event) => {
   const apiKeys = [
     process.env.YOUTUBE_API_KEY,
     process.env.YOUTUBE_API_KEY_2,
+    process.env.YOUTUBE_API_KEY_3,
   ].filter(Boolean);
   if (!apiKeys.length) return respond(500, { error: 'YOUTUBE_API_KEY not set' });
 

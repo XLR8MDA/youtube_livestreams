@@ -21,6 +21,12 @@
       <button id="tab-stream-log" class="tab-btn" data-tab="stream-log" type="button">Stream Log</button>
     </nav>
 
+    <div id="quota-widget" title="YouTube API units used today · resets at midnight Pacific Time">
+      <span id="quota-units-display">0 u</span>
+      <span class="quota-sep">·</span>
+      <span id="quota-timer-display">--:--:--</span>
+    </div>
+
     <div id="toolbar-right">
       <span id="live-count">&mdash; LIVE</span>
       <button id="btn-sync" title="Sync all streams to live edge">&#9654;&#9654;</button>
@@ -41,6 +47,16 @@
           <select id="backtest-channel-select" aria-label="Backtest channel">
             <option value="">Select a channel</option>
           </select>
+        </div>
+
+        <div class="backtest-card">
+          <div class="panel-label">Manual URL</div>
+          <p class="manual-url-hint">Paste a YouTube URL to load without using API quota.</p>
+          <div class="manual-url-row">
+            <input id="manual-url-input" type="text" class="manual-url-input" placeholder="youtube.com/watch?v=...">
+            <button id="btn-manual-url-load" class="ghost-btn" type="button">Load</button>
+          </div>
+          <div id="manual-url-status" class="panel-status" style="display:none"></div>
         </div>
 
         <div class="backtest-card">

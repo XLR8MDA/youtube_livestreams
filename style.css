@@ -92,6 +92,49 @@ optgroup {
   box-shadow: 0 0 12px rgba(92,142,0,0.45);
 }
 
+#quota-widget {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
+#quota-units-display { color: var(--text); }
+.quota-sep { opacity: 0.4; }
+
+.manual-url-hint {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin: 0 0 8px;
+}
+.manual-url-row {
+  display: flex;
+  gap: 6px;
+}
+.manual-url-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 0.82rem;
+  font-family: 'IBM Plex Mono', monospace;
+  outline: none;
+}
+.manual-url-input:focus {
+  border-color: var(--accent);
+}
+
 #toolbar-right {
   margin-left: auto;
   display: flex;

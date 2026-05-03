@@ -49,7 +49,53 @@ async function init() {
   setupToolbar();
   setupModal();
   injectYouTubeAPI();
+  startQuotaClock();
   document.addEventListener('visibilitychange', handleVisibilityChange);
+}
+
+// ── YouTube Quota Tracker ─────────────────────────────────────────────────
+// Units reset daily at midnight Pacific Time (America/Los_Angeles).
+// search = 100 units, videos/channels = 1 unit each.
+
+function getPtDateString() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+
+function trackQuotaUnits(n) {
+  const today  = getPtDateString();
+  const stored = JSON.parse(localStorage.getItem('yt_quota') || '{}');
+  if (stored.date !== today) { stored.units = 0; stored.date = today; }
+  stored.units = (stored.units || 0) + n;
+  localStorage.setItem('yt_quota', JSON.stringify(stored));
+  const el = document.getElementById('quota-units-display');
+  if (el) el.textContent = stored.units.toLocaleString() + ' u';
+}
+window.trackQuotaUnits = trackQuotaUnits; // expose to backtest.js
+
+function startQuotaClock() {
+  // Restore today's counter
+  const stored = JSON.parse(localStorage.getItem('yt_quota') || '{}');
+  const el = document.getElementById('quota-units-display');
+  if (el && stored.date === getPtDateString()) {
+    el.textContent = (stored.units || 0).toLocaleString() + ' u';
+  }
+
+  function tick() {
+    // Seconds elapsed since midnight Pacific Time
+    const ptTime = new Date().toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles', hour12: false,
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const [h, m, s] = ptTime.split(':').map(Number);
+    const remaining = 86400 - (h * 3600 + m * 60 + s);
+    const hh = String(Math.floor(remaining / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
+    const ss = String(remaining % 60).padStart(2, '0');
+    const timerEl = document.getElementById('quota-timer-display');
+    if (timerEl) timerEl.textContent = `${hh}:${mm}:${ss}`;
+  }
+  tick();
+  setInterval(tick, 1000);
 }
 
 // ── State Persistence ─────────────────────────────────────────────────────
@@ -290,6 +336,7 @@ async function apiFetch(endpoint, params) {
     const msg = err?.error?.message || `HTTP ${res.status}`;
     throw new Error(msg);
   }
+  trackQuotaUnits(endpoint === 'search' ? 100 : 1);
   return res.json();
 }
 
@@ -346,40 +393,44 @@ async function batchCheckLiveStatus(videoIds) {
   return result;
 }
 
-// Run search.list for all channels (expensive — run sparingly)
+// Run search.list only for offline channels; batch-check known live ones cheaply.
+// search costs 100 units/channel — skip it for channels already tracked as live.
 async function refreshAllChannels() {
   if (!channels.length) return;
   isRefreshing = true;
   document.getElementById('btn-refresh')?.classList.add('spinning');
 
-  for (const ch of channels) {
+  // Batch-confirm channels we already know are live (1 unit total)
+  const liveChannels = channels.filter(c => c.videoId);
+  if (liveChannels.length) {
     try {
-      const wasLive = ch.isLive;
-      const videoId = await fetchLiveVideoId(ch.channelId);
-      ch.videoId = videoId;
-      ch.isLive = !!videoId;
-      if (!videoId) ch.viewers = 0;
-      if (!wasLive && ch.isLive) notifyChannelLive(ch);
-    } catch (err) {
-      console.warn(`[refresh] ${ch.name}: ${err.message}`);
-    }
-  }
-
-  // For live channels, do a batch confirm and get viewer counts
-  const liveIds = channels.filter(c => c.videoId).map(c => c.videoId);
-  if (liveIds.length) {
-    try {
-      const statusMap = await batchCheckLiveStatus(liveIds);
-      for (const ch of channels) {
-        if (ch.videoId && statusMap.has(ch.videoId)) {
-          const s = statusMap.get(ch.videoId);
-          ch.isLive = s.isLive;
+      const statusMap = await batchCheckLiveStatus(liveChannels.map(c => c.videoId));
+      for (const ch of liveChannels) {
+        const s = statusMap.get(ch.videoId);
+        if (!s || !s.isLive) {
+          ch.isLive = false;
+          ch.videoId = null;
+          ch.viewers = 0;
+        } else {
           ch.viewers = s.viewers;
-          if (!s.isLive) ch.videoId = null;
         }
       }
     } catch (err) {
       console.warn('[batchCheck]', err.message);
+    }
+  }
+
+  // Search only offline channels for new streams (100 units each)
+  const offlineChannels = channels.filter(c => !c.videoId);
+  for (const ch of offlineChannels) {
+    try {
+      const videoId = await fetchLiveVideoId(ch.channelId);
+      ch.videoId = videoId;
+      ch.isLive = !!videoId;
+      if (!videoId) ch.viewers = 0;
+      if (ch.isLive) notifyChannelLive(ch);
+    } catch (err) {
+      console.warn(`[refresh] ${ch.name}: ${err.message}`);
     }
   }
 

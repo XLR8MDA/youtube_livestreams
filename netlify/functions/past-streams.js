@@ -4,9 +4,15 @@
  * GET /.netlify/functions/past-streams?channelId=UC...&pageToken=...
  *
  * Response: { streams: [{ videoId, title, publishedAt, thumbnail }], nextPageToken }
+ *
+ * Results are cached in NeonDB (dashboard_state) for 6 hours to avoid burning
+ * YouTube search quota (100 units per call).
  */
 
+const { neon } = require('@neondatabase/serverless');
+
 const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function isQuotaError(data) {
   return data?.error?.errors?.some(e => e.reason === 'quotaExceeded');
@@ -39,11 +45,27 @@ exports.handler = async (event) => {
   ].filter(Boolean);
   if (!apiKeys.length) return respond(500, { error: 'YOUTUBE_API_KEY not set' });
 
-  const { channelId, pageToken } = event.queryStringParameters || {};
+  const { channelId, pageToken, bust } = event.queryStringParameters || {};
   if (!channelId) return respond(400, { error: 'channelId is required' });
 
+  const cacheKey = `past-streams__${channelId}__${pageToken || 'page1'}`;
+
   try {
-    // Search for completed livestreams on this channel (10 per page)
+    const sql = neon(process.env.DATABASE_URL);
+
+    // Check cache (skip if bust=1 is passed)
+    if (!bust) {
+      const rows = await sql`SELECT value, updated_at FROM dashboard_state WHERE key = ${cacheKey}`;
+      if (rows.length) {
+        const age = Date.now() - new Date(rows[0].updated_at).getTime();
+        if (age < CACHE_TTL_MS) {
+          console.log(`[past-streams] cache hit for ${cacheKey} (age ${Math.round(age / 60000)}min)`);
+          return respond(200, { ...rows[0].value, cached: true });
+        }
+      }
+    }
+
+    // Cache miss — fetch from YouTube (costs 100 quota units)
     const searchUrl = new URL(`${YT_API_BASE}/search`);
     searchUrl.searchParams.set('part', 'id,snippet');
     searchUrl.searchParams.set('channelId', channelId);
@@ -67,10 +89,17 @@ exports.handler = async (event) => {
       thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || null,
     }));
 
-    return respond(200, {
-      streams,
-      nextPageToken: data.nextPageToken || null,
-    });
+    const payload = { streams, nextPageToken: data.nextPageToken || null };
+
+    // Store in cache
+    await sql`
+      INSERT INTO dashboard_state (key, value)
+      VALUES (${cacheKey}, ${JSON.stringify(payload)}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+    console.log(`[past-streams] cached ${cacheKey} (${streams.length} streams)`);
+
+    return respond(200, { ...payload, cached: false });
   } catch (err) {
     return respond(502, { error: err.message });
   }

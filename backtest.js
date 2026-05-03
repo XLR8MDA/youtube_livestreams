@@ -16,6 +16,7 @@ function initBacktest() {
   setupTabs();
   setupChannelSelect();
   setupLoadMore();
+  setupManualUrl();
   setupRRCalc();
   setupJournalForm();
   setupJournalPairSelect();
@@ -81,6 +82,46 @@ function setupChannelSelect() {
   });
 }
 
+// ── Manual URL Loader ─────────────────────────────────────────────────────
+function setupManualUrl() {
+  const input  = document.getElementById('manual-url-input');
+  const btn    = document.getElementById('btn-manual-url-load');
+  const status = document.getElementById('manual-url-status');
+
+  function tryLoad() {
+    const raw = input.value.trim();
+    if (!raw) return;
+    const videoId = extractVideoIdFromUrl(raw);
+    if (!videoId) {
+      status.textContent = 'Could not find a video ID in that URL.';
+      status.style.display = '';
+      return;
+    }
+    status.style.display = 'none';
+    input.value = '';
+    selectStream({ videoId, title: videoId, publishedAt: null, thumbnail: null });
+  }
+
+  btn.addEventListener('click', tryLoad);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') tryLoad(); });
+}
+
+function extractVideoIdFromUrl(url) {
+  const patterns = [
+    /[?&]v=([\w-]{11})/,
+    /youtu\.be\/([\w-]{11})/,
+    /youtube\.com\/live\/([\w-]{11})/,
+    /youtube\.com\/shorts\/([\w-]{11})/,
+    /youtube\.com\/embed\/([\w-]{11})/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  if (/^[\w-]{11}$/.test(url)) return url; // bare video ID
+  return null;
+}
+
 // ── Past streams list ─────────────────────────────────────────────────────
 function clearStreamList() {
   document.getElementById('backtest-stream-list').innerHTML = '';
@@ -102,6 +143,7 @@ async function loadPastStreams(channelId, pageToken) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
+    if (!data.cached) window.trackQuotaUnits?.(100);
     const { streams, nextPageToken } = data;
     btNextToken = nextPageToken || null;
 

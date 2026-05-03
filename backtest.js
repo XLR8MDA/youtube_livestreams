@@ -143,6 +143,7 @@ async function loadPastStreams(channelId, pageToken) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
+    if (!data.cached) window.trackQuotaUnits?.(100);
     const { streams, nextPageToken } = data;
     btNextToken = nextPageToken || null;
 

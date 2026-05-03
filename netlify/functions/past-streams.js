@@ -15,7 +15,8 @@
 const { neon } = require('@neondatabase/serverless');
 
 const YT_API_BASE  = 'https://www.googleapis.com/youtube/v3';
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const PAGE0_TTL_MS = 12 * 60 * 60 * 1000;       // 12 hours — picks up new daily streams
+const OLDER_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days  — old streams never change
 
 function isQuotaError(data) {
   return data?.error?.errors?.some(e => e.reason === 'quotaExceeded');
@@ -52,7 +53,9 @@ exports.handler = async (event) => {
   const { channelId, pageToken, bust } = event.queryStringParameters || {};
   if (!channelId) return respond(400, { error: 'channelId is required' });
 
-  const cacheKey = `past-streams__${channelId}__${pageToken || 'page1'}`;
+  const isFirstPage = !pageToken;
+  const cacheKey    = `past-streams__${channelId}__${pageToken || 'page1'}`;
+  const ttl         = isFirstPage ? PAGE0_TTL_MS : OLDER_TTL_MS;
 
   try {
     const sql = neon(process.env.DATABASE_URL);
@@ -62,8 +65,8 @@ exports.handler = async (event) => {
       const rows = await sql`SELECT value, updated_at FROM dashboard_state WHERE key = ${cacheKey}`;
       if (rows.length) {
         const age = Date.now() - new Date(rows[0].updated_at).getTime();
-        if (age < CACHE_TTL_MS) {
-          console.log(`[past-streams] cache hit ${cacheKey} (${Math.round(age / 86400000)}d old)`);
+        if (age < ttl) {
+          console.log(`[past-streams] cache hit ${cacheKey} (${Math.round(age / 3600000)}h old)`);
           return respond(200, { ...rows[0].value, cached: true });
         }
       }

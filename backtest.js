@@ -140,7 +140,9 @@ async function loadPastStreams(channelId, pageToken) {
 
   try {
     const res  = await fetch(url);
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error(`Function error (HTTP ${res.status}): ${text.slice(0, 200)}`); }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
     if (!data.cached) window.trackQuotaUnits?.(100);

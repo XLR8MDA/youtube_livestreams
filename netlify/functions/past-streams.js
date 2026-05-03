@@ -23,6 +23,8 @@ const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  // Bypass Google/YouTube cookie consent gates (GDPR redirect)
+  'Cookie': 'CONSENT=YES+1; SOCS=CAI',
 };
 
 exports.handler = async (event) => {
@@ -152,18 +154,43 @@ function parseInitialData(data) {
   const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
   let contents = null;
 
+  function getTabContents(tr) {
+    return tr?.content?.richGridRenderer?.contents
+        || tr?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents
+        || null;
+  }
+
+  // 1. Try selected tab first
   for (const tab of tabs) {
     const tr = tab?.tabRenderer;
-    if (!tr) continue;
-    // The /streams URL loads with the Live/Streams tab pre-selected
-    if (tr.selected) {
-      contents = tr?.content?.richGridRenderer?.contents
-                 || tr?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents;
-      break;
+    if (tr?.selected) { contents = getTabContents(tr); if (contents) break; }
+  }
+
+  // 2. Match by endpoint URL containing '/streams' or '/live'
+  if (!contents) {
+    for (const tab of tabs) {
+      const tr  = tab?.tabRenderer;
+      const url = tr?.endpoint?.commandMetadata?.webCommandMetadata?.url || '';
+      if (url.includes('/streams') || url.includes('/live')) {
+        contents = getTabContents(tr);
+        if (contents) break;
+      }
     }
   }
 
-  // Fallback: find any tab that has a richGridRenderer with items
+  // 3. Match by tab title
+  if (!contents) {
+    for (const tab of tabs) {
+      const tr    = tab?.tabRenderer;
+      const title = (tr?.title || '').toLowerCase();
+      if (title === 'live' || title === 'streams') {
+        contents = getTabContents(tr);
+        if (contents) break;
+      }
+    }
+  }
+
+  // 4. Last resort: first tab that has a richGridRenderer with items
   if (!contents) {
     for (const tab of tabs) {
       const c = tab?.tabRenderer?.content?.richGridRenderer?.contents;
@@ -171,7 +198,10 @@ function parseInitialData(data) {
     }
   }
 
-  if (!contents) return { streams, continuationToken };
+  if (!contents) {
+    console.warn('[past-streams] could not locate streams tab — tab titles:', tabs.map(t => t?.tabRenderer?.title));
+    return { streams, continuationToken };
+  }
 
   for (const item of contents) {
     const vr = item?.richItemRenderer?.content?.videoRenderer;

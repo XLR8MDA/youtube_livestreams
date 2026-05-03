@@ -145,7 +145,11 @@
             <div id="screenshot-drop-area" class="screenshot-drop-area">
               <span class="screenshot-icon">&#128247;</span>
               <span>Drop chart screenshot here, or</span>
-              <button id="btn-paste-screenshot" type="button" class="ghost-btn">Paste (Ctrl+V)</button>
+              <div class="screenshot-btns">
+                <button id="btn-paste-screenshot" type="button" class="ghost-btn">Paste (Ctrl+V)</button>
+                <button id="btn-upload-screenshot" type="button" class="ghost-btn">Upload</button>
+              </div>
+              <input id="screenshot-file-input" type="file" accept="image/*" style="display:none">
             </div>
             <div id="screenshot-preview" class="screenshot-preview hidden">
               <img id="screenshot-img" src="" alt="Chart preview">

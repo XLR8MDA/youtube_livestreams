@@ -1507,6 +1507,13 @@ optgroup {
   background: rgba(99, 179, 237, 0.06);
 }
 
+.screenshot-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .screenshot-icon {
   font-size: 1.1rem;
   line-height: 1;

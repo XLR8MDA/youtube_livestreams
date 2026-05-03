@@ -663,6 +663,14 @@ function setupScreenshotPaste() {
     btShowToast('Press Ctrl+V anywhere to paste your screenshot', 'info');
   });
 
+  // Upload button — opens file picker (works on mobile)
+  const fileInput = document.getElementById('screenshot-file-input');
+  document.getElementById('btn-upload-screenshot').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) { processScreenshot(file); fileInput.value = ''; }
+  });
+
   // Global paste listener
   document.addEventListener('paste', e => {
     const items = e.clipboardData?.items;

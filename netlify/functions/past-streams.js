@@ -1,109 +1,230 @@
 /**
  * Netlify function — fetch past completed livestreams for a channel
  *
- * GET /.netlify/functions/past-streams?channelId=UC...&pageToken=...
+ * Scrapes YouTube's channel streams page directly — zero API quota used.
+ * Results cached per page in NeonDB.
+ *
+ * Page 0: scraped fresh, cached 6 hours
+ * Page 1+: continuation from previous page, cached 7 days (old streams don't change)
+ *
+ * GET /.netlify/functions/past-streams?channelId=UC...
+ * GET /.netlify/functions/past-streams?channelId=UC...&pageToken=1   ← Load More
+ * GET /.netlify/functions/past-streams?channelId=UC...&bust=1        ← force refresh
  *
  * Response: { streams: [{ videoId, title, publishedAt, thumbnail }], nextPageToken }
- *
- * Results are cached in NeonDB (dashboard_state) for 6 hours to avoid burning
- * YouTube search quota (100 units per call).
  */
 
 const { neon } = require('@neondatabase/serverless');
 
-const YT_API_BASE = 'https://www.googleapis.com/youtube/v3';
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const PAGE0_TTL_MS = 6 * 60 * 60 * 1000;       // 6 hours for newest page
+const OLDER_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days for older pages
 
-function isQuotaError(data) {
-  return data?.error?.errors?.some(e => e.reason === 'quotaExceeded');
-}
-
-async function ytFetch(url, apiKeys) {
-  let lastRes, lastData;
-  for (let i = 0; i < apiKeys.length; i++) {
-    url.searchParams.set('key', apiKeys[i]);
-    const res = await fetch(url.toString());
-    const data = await res.json();
-    lastRes = res;
-    lastData = data;
-    if (res.status === 403 && isQuotaError(data)) {
-      console.warn(`[past-streams] Key ${i + 1} quota exceeded — trying next key`);
-      continue;
-    }
-    return { res, data };
-  }
-  return { res: lastRes, data: lastData };
-}
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+};
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') return respond(405, { error: 'Method not allowed' });
 
-  const apiKeys = [
-    process.env.YOUTUBE_API_KEY,
-    process.env.YOUTUBE_API_KEY_2,
-    process.env.YOUTUBE_API_KEY_3,
-  ].filter(Boolean);
-  if (!apiKeys.length) return respond(500, { error: 'YOUTUBE_API_KEY not set' });
-
   const { channelId, pageToken, bust } = event.queryStringParameters || {};
   if (!channelId) return respond(400, { error: 'channelId is required' });
 
-  const cacheKey = `past-streams__${channelId}__${pageToken || 'page1'}`;
+  const page     = parseInt(pageToken || '0', 10);
+  const cacheKey = `scraped-streams__${channelId}__${page}`;
+  const ttl      = page === 0 ? PAGE0_TTL_MS : OLDER_TTL_MS;
 
   try {
     const sql = neon(process.env.DATABASE_URL);
 
-    // Check cache (skip if bust=1 is passed)
+    // ── Cache check ──────────────────────────────────────────────────────
     if (!bust) {
       const rows = await sql`SELECT value, updated_at FROM dashboard_state WHERE key = ${cacheKey}`;
       if (rows.length) {
         const age = Date.now() - new Date(rows[0].updated_at).getTime();
-        if (age < CACHE_TTL_MS) {
-          console.log(`[past-streams] cache hit for ${cacheKey} (age ${Math.round(age / 60000)}min)`);
-          return respond(200, { ...rows[0].value, cached: true });
+        if (age < ttl) {
+          const cached = rows[0].value;
+          console.log(`[past-streams] cache hit page ${page} (age ${Math.round(age / 60000)}min)`);
+          return respond(200, {
+            streams: cached.streams,
+            nextPageToken: cached.continuationToken ? String(page + 1) : null,
+            cached: true,
+          });
         }
       }
     }
 
-    // Cache miss — fetch from YouTube (costs 100 quota units)
-    const searchUrl = new URL(`${YT_API_BASE}/search`);
-    searchUrl.searchParams.set('part', 'id,snippet');
-    searchUrl.searchParams.set('channelId', channelId);
-    searchUrl.searchParams.set('eventType', 'completed');
-    searchUrl.searchParams.set('type', 'video');
-    searchUrl.searchParams.set('order', 'date');
-    searchUrl.searchParams.set('maxResults', '10');
-    if (pageToken) searchUrl.searchParams.set('pageToken', pageToken);
+    // ── Cache miss — scrape YouTube ──────────────────────────────────────
+    // Resolve scrape URL: prefer @handle format, fall back to /channel/UC...
+    const chanRows = await sql`SELECT handle FROM channels WHERE channel_id = ${channelId} LIMIT 1`;
+    const handle   = chanRows[0]?.handle?.replace(/^@/, '');
+    const streamsUrl = handle
+      ? `https://www.youtube.com/@${handle}/streams`
+      : `https://www.youtube.com/channel/${channelId}/streams`;
 
-    const { res, data } = await ytFetch(searchUrl, apiKeys);
+    let result;
 
-    if (!res.ok) {
-      const msg = data?.error?.message || `YouTube API error ${res.status}`;
-      return respond(res.status, { error: msg });
+    if (page === 0) {
+      result = await scrapeChannelStreams(streamsUrl);
+    } else {
+      // Pull continuation token that was stored when page (page-1) was fetched
+      const prevKey  = `scraped-streams__${channelId}__${page - 1}`;
+      const prevRows = await sql`SELECT value FROM dashboard_state WHERE key = ${prevKey}`;
+      if (!prevRows.length || !prevRows[0].value?.continuationToken) {
+        return respond(400, { error: 'Load previous page first — continuation token missing.' });
+      }
+      result = await fetchContinuation(prevRows[0].value.continuationToken);
     }
 
-    const streams = (data.items || []).map(item => ({
-      videoId: item.id.videoId,
-      title: item.snippet.title,
-      publishedAt: item.snippet.publishedAt,
-      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || null,
-    }));
-
-    const payload = { streams, nextPageToken: data.nextPageToken || null };
-
-    // Store in cache
+    // Store result (streams + continuation token for next Load More)
     await sql`
       INSERT INTO dashboard_state (key, value)
-      VALUES (${cacheKey}, ${JSON.stringify(payload)}::jsonb)
+      VALUES (${cacheKey}, ${JSON.stringify(result)}::jsonb)
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     `;
-    console.log(`[past-streams] cached ${cacheKey} (${streams.length} streams)`);
+    console.log(`[past-streams] scraped page ${page} via ${streamsUrl || 'continuation'}: ${result.streams.length} streams, hasMore=${!!result.continuationToken}`);
 
-    return respond(200, { ...payload, cached: false });
+    return respond(200, {
+      streams: result.streams,
+      nextPageToken: result.continuationToken ? String(page + 1) : null,
+      cached: false,
+    });
+
   } catch (err) {
+    console.error('[past-streams]', err.message);
     return respond(502, { error: err.message });
   }
 };
+
+// ── Scraping ──────────────────────────────────────────────────────────────
+
+async function scrapeChannelStreams(streamsUrl) {
+  const res = await fetch(streamsUrl, { headers: BROWSER_HEADERS });
+  if (!res.ok) throw new Error(`YouTube page returned ${res.status}`);
+
+  const html = await res.text();
+  const ytInitialData = extractYtInitialData(html);
+  return parseInitialData(ytInitialData);
+}
+
+async function fetchContinuation(token) {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/browse', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': BROWSER_HEADERS['User-Agent'],
+      'X-YouTube-Client-Name': '1',
+      'X-YouTube-Client-Version': '2.20240101.00.00',
+    },
+    body: JSON.stringify({
+      context: {
+        client: { clientName: 'WEB', clientVersion: '2.20240101.00.00', hl: 'en', gl: 'US' },
+      },
+      continuation: token,
+    }),
+  });
+  if (!res.ok) throw new Error(`YouTube browse API returned ${res.status}`);
+  const data = await res.json();
+  return parseContinuationData(data);
+}
+
+// ── Parsers ───────────────────────────────────────────────────────────────
+
+function extractYtInitialData(html) {
+  const marker = 'var ytInitialData = ';
+  const start  = html.indexOf(marker);
+  if (start === -1) throw new Error('ytInitialData not found — YouTube may have changed their page structure');
+
+  const jsonStart = html.indexOf('{', start);
+  let depth = 0, jsonEnd = jsonStart;
+  for (let i = jsonStart; i < html.length; i++) {
+    if      (html[i] === '{') depth++;
+    else if (html[i] === '}') { if (--depth === 0) { jsonEnd = i; break; } }
+  }
+  return JSON.parse(html.slice(jsonStart, jsonEnd + 1));
+}
+
+function parseInitialData(data) {
+  const streams = [];
+  let continuationToken = null;
+
+  const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+  let contents = null;
+
+  for (const tab of tabs) {
+    const tr = tab?.tabRenderer;
+    if (!tr) continue;
+    // The /streams URL loads with the Live/Streams tab pre-selected
+    if (tr.selected) {
+      contents = tr?.content?.richGridRenderer?.contents
+                 || tr?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents;
+      break;
+    }
+  }
+
+  // Fallback: find any tab that has a richGridRenderer with items
+  if (!contents) {
+    for (const tab of tabs) {
+      const c = tab?.tabRenderer?.content?.richGridRenderer?.contents;
+      if (c?.length) { contents = c; break; }
+    }
+  }
+
+  if (!contents) return { streams, continuationToken };
+
+  for (const item of contents) {
+    const vr = item?.richItemRenderer?.content?.videoRenderer;
+    if (vr) {
+      const s = parseVideoRenderer(vr);
+      if (s) streams.push(s);
+    }
+    const cont = item?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+    if (cont) continuationToken = cont;
+  }
+
+  return { streams, continuationToken };
+}
+
+function parseContinuationData(data) {
+  const streams = [];
+  let continuationToken = null;
+
+  const actions = data?.onResponseReceivedActions || [];
+  for (const action of actions) {
+    const items = action?.appendContinuationItemsAction?.continuationItems || [];
+    for (const item of items) {
+      const vr = item?.richItemRenderer?.content?.videoRenderer;
+      if (vr) {
+        const s = parseVideoRenderer(vr);
+        if (s) streams.push(s);
+      }
+      const cont = item?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+      if (cont) continuationToken = cont;
+    }
+  }
+
+  return { streams, continuationToken };
+}
+
+function parseVideoRenderer(vr) {
+  const videoId = vr?.videoId;
+  if (!videoId) return null;
+
+  // Skip streams that are currently live (no duration = still broadcasting)
+  const isLive = (vr?.badges || []).some(
+    b => b?.metadataBadgeRenderer?.label === 'LIVE'
+  );
+  if (isLive) return null;
+
+  const title    = vr?.title?.runs?.[0]?.text || vr?.title?.simpleText || 'Untitled';
+  // YouTube returns relative strings like "Streamed 3 days ago" or "Streamed on Jan 5, 2024"
+  const dateText = vr?.publishedTimeText?.simpleText || vr?.dateText?.simpleText || null;
+  const thumbs   = vr?.thumbnail?.thumbnails || [];
+  const thumbnail = thumbs[thumbs.length - 1]?.url || thumbs[0]?.url || null;
+
+  return { videoId, title, publishedAt: dateText, thumbnail };
+}
 
 function respond(statusCode, body) {
   return {

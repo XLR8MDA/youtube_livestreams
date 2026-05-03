@@ -71,6 +71,7 @@ exports.handler = async (event) => {
     process.env.YOUTUBE_API_KEY,
     process.env.YOUTUBE_API_KEY_2,
     process.env.YOUTUBE_API_KEY_3,
+    process.env.YOUTUBE_API_KEY_4,
   ].filter(Boolean);
   if (!apiKeys.length || !process.env.DATABASE_URL) {
     console.error('[live-checker] Missing env vars');

@@ -143,7 +143,6 @@ async function loadPastStreams(channelId, pageToken) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-    if (!data.cached) window.trackQuotaUnits?.(100);
     const { streams, nextPageToken } = data;
     btNextToken = nextPageToken || null;
 
@@ -167,9 +166,10 @@ function appendStreamCards(streams) {
     card.type = 'button';
     card.className = 'stream-card';
     card.dataset.videoId = s.videoId;
-    const date = new Date(s.publishedAt).toLocaleDateString(undefined, {
-      month: 'short', day: 'numeric', year: 'numeric',
-    });
+    const parsed = s.publishedAt ? new Date(s.publishedAt) : null;
+    const date   = parsed && !isNaN(parsed)
+      ? parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      : (s.publishedAt || '');
     card.innerHTML = `
       ${s.thumbnail ? `<img class="stream-card-thumb" src="${btEscAttr(s.thumbnail)}" alt="">` : ''}
       <div class="stream-card-info">

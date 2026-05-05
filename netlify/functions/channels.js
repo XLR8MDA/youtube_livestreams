@@ -50,17 +50,11 @@ exports.handler = async (event) => {
       const incoming = JSON.parse(event.body || '[]');
       if (!Array.isArray(incoming)) return respond(400, { error: 'Body must be a JSON array' });
       
-      const incomingIds = incoming.map(c => c.channelId);
-      
-      // Remove those not in the incoming list (standard sync behavior for app.js)
-      if (incomingIds.length > 0) {
-        await sql`DELETE FROM channels WHERE channel_id != ALL(${incomingIds})`;
-      } else {
-        await sql`DELETE FROM channels`;
-      }
+      const incomingIds = incoming.map(c => c.channelId).filter(Boolean);
       
       // Upsert incoming
       for (const ch of incoming) {
+        if (!ch.channelId) continue;
         await sql`
           INSERT INTO channels (channel_id, name, handle, pair, manual_video_id)
           VALUES (${ch.channelId}, ${ch.name}, ${ch.handle || null}, ${ch.pair || null}, ${ch.manualVideoId || false})
@@ -73,6 +67,11 @@ exports.handler = async (event) => {
         `;
       }
       
+      // Deactivate channels NOT in the incoming list (soft-delete to preserve history)
+      if (incomingIds.length > 0) {
+        await sql`UPDATE channels SET is_active = FALSE WHERE channel_id != ALL(${incomingIds})`;
+      }
+
       return respond(200, { ok: true });
     }
 

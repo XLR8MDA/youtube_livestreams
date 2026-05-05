@@ -82,15 +82,29 @@ async function openChDaily(channelId, channelName) {
         ? `<a class="ch-daily-vid-link" href="https://youtube.com/watch?v=${esc(t.streamId)}${t.videoTimestamp != null ? '&t=' + t.videoTimestamp + 's' : ''}" target="_blank" rel="noopener" title="${esc(t.streamTitle || '')}">▶</a>`
         : '';
 
+      let rrDisplay = '—';
+      let rrClass = 'ch-cell-rr';
+      if (t.rr != null) {
+        if (result === 'loss') {
+          rrDisplay = `-${Math.abs(t.rr)}R`;
+          rrClass += ' negative';
+        } else if (result === 'win') {
+          rrDisplay = `+${t.rr}R`;
+          rrClass += ' positive';
+        } else {
+          rrDisplay = `${t.rr}R`;
+        }
+      }
+
       html += `
         <tr class="ch-row-${result}">
           <td>${esc(t.pair || '—')}</td>
-          <td class="ch-cell-${t.direction}">${esc((t.direction || '—').toUpperCase())}</td>
-          <td class="ch-cell-${result}">${result.toUpperCase() || '—'}</td>
+          <td class="ch-cell-${(t.direction || '').toLowerCase()}">${esc((t.direction || '—').toUpperCase())}</td>
+          <td class="ch-cell-${(result || '').toLowerCase()}">${result.toUpperCase() || '—'}</td>
           <td>${t.entry != null ? t.entry : '—'}</td>
           <td>${t.stop  != null ? t.stop  : '—'}</td>
           <td>${t.exit  != null ? t.exit  : '—'}</td>
-          <td class="ch-cell-rr${result === 'loss' ? ' negative' : ''}">${t.rr != null ? t.rr + 'R' : '—'}</td>
+          <td class="${rrClass}">${rrDisplay}</td>
           <td class="ch-cell-notes">${esc(t.notes || '')}</td>
           <td>${videoLink}</td>
         </tr>`;

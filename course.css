@@ -365,6 +365,41 @@
   color: var(--text);
   line-height: 1.4;
 }
+.course-notes-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+  margin: 10px 0;
+}
+.course-notes-section label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.course-notes-section textarea {
+  flex: 1;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.5;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.course-notes-section textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(92,142,0,0.1);
+}
 .course-mark-btn {
   margin-top: auto;
   background: rgba(92,142,0,0.08);

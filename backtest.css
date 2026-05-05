@@ -69,11 +69,58 @@
   line-height: 1.4;
   font-family: 'IBM Plex Mono', monospace;
 }
-
 .player-tools {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+/* ── Analysis Markers ────────────────────────────────────────────────────── */
+.analysis-markers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px;
+  padding-top: 12px;
+}
+
+.analysis-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.analysis-marker:hover {
+  border-color: var(--accent);
+  background: rgba(92,142,0,0.04);
+}
+
+.marker-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.marker-label {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.marker-entry { border-left: 3px solid var(--accent); }
+.marker-exit  { border-left: 3px solid #ff4d4d; }
+.marker-discussion { border-left: 3px solid #6080ff; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -234,7 +281,31 @@
   color: #fff;
 }
 
-.stream-card-thumb {
+.stream-card.journaled {
+  border-left: 3px solid var(--accent);
+  background: rgba(92,142,0,0.03);
+}
+.stream-card.journaled:hover {
+  background: rgba(92,142,0,0.08);
+}
+.stream-card.journaled .stream-card-title {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.stream-card.log-entry {
+  border-left: 3px solid #2563eb;
+  background: rgba(37,99,235,0.03);
+}
+.stream-card.log-entry:hover {
+  background: rgba(37,99,235,0.08);
+}
+.stream-card.log-entry .stream-card-title {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.stream-card.active {
   width: 64px;
   height: 40px;
   object-fit: cover;

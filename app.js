@@ -89,17 +89,22 @@ async function loadState() {
   } catch { saved = []; }
 
   const defaults = window.TRADING_CONFIG?.DEFAULT_CHANNELS || [];
-  const seenIds = new Set(saved.map(c => c.channelId).filter(Boolean));
-  const seenHandles = new Set(saved.map(c => c.handle).filter(Boolean));
-  for (const def of defaults) {
-    const alreadyPresent = (def.channelId && seenIds.has(def.channelId))
-                        || (def.handle && seenHandles.has(def.handle));
-    if (!alreadyPresent) {
-      saved.push({ ...def, videoId: null, isLive: false, viewers: 0 });
+  if (saved.length === 0 && defaults.length > 0) {
+    saved = defaults.map(def => ({ ...def, videoId: null, isLive: false, viewers: 0 }));
+  } else if (defaults.length > 0) {
+    const seenIds = new Set(saved.map(c => c.channelId).filter(Boolean));
+    const seenHandles = new Set(saved.map(c => c.handle).filter(Boolean));
+    for (const def of defaults) {
+      const alreadyPresent = (def.channelId && seenIds.has(def.channelId))
+                          || (def.handle && seenHandles.has(def.handle));
+      if (!alreadyPresent) {
+        saved.push({ ...def, videoId: null, isLive: false, viewers: 0 });
+      }
     }
   }
   channels = normaliseLoadedChannels(saved);
-  saveChannels();
+  // Only save if we actually have channels, to prevent wiping remote DB on fresh load
+  if (channels.length > 0) saveChannels();
 }
 
 function normaliseLoadedChannels(list) {
@@ -856,10 +861,17 @@ function removeChannel(channelId) {
     activeAudioChannel = null;
     saveActiveAudio();
   }
-  saveChannels();
+  localStorage.setItem(LS_CHANNELS, JSON.stringify(channels));
   renderChannelList();
   buildGrid();
-  if (ch) showToast(`Removed ${ch.name}`, 'info');
+  if (ch) {
+    showToast(`Removed ${ch.name}`, 'info');
+    if (!isLocalHost) {
+      fetch(`/.netlify/functions/channels?channelId=${encodeURIComponent(channelId)}`, {
+        method: 'DELETE',
+      }).catch(err => console.warn('[removeChannel] remote delete failed:', err.message));
+    }
+  }
 }
 
 

@@ -20,6 +20,7 @@ function initBacktest() {
   setupRRCalc();
   setupJournalForm();
   setupJournalPairSelect();
+  setupAnalyzeButton();
   setupScreenshotPaste();
   setupReviewFilter();
 }
@@ -98,6 +99,7 @@ function setupChannelSelect() {
     clearStreamList();
     resetPlayer();
     clearJournal();
+    clearAnalytics();
     if (btChannelId) {
       await Promise.all([
         loadReviewedIds(btChannelId),
@@ -237,12 +239,15 @@ function selectStream(stream) {
   btStreamId    = videoId;
   btStreamTitle = title;
   btStreamMeta  = stream;
+  btMarkers     = [];
 
   document.getElementById('backtest-player-title').textContent = title;
   document.getElementById('backtest-player-empty').classList.add('hidden');
   document.getElementById('backtest-player-frame').classList.remove('hidden');
   document.getElementById('journal-context').textContent = `Logging for: ${title}`;
+  document.getElementById('btn-analyze-stream').disabled = false;
   renderPlayerMeta(stream);
+  resetAnalysisState();
 
   if (btPlayer) {
     btPlayer.loadVideoById(videoId);
@@ -255,6 +260,7 @@ function selectStream(stream) {
 
   if (btChannelId) {
     loadJournalEntries(btChannelId, videoId);
+    loadChannelAnalytics(btChannelId);
   }
 }
 
@@ -262,13 +268,82 @@ function resetPlayer() {
   btStreamId    = null;
   btStreamTitle = null;
   btStreamMeta  = null;
+  btMarkers     = [];
   document.getElementById('backtest-player-title').textContent = 'No stream selected';
   document.getElementById('backtest-player-empty').classList.remove('hidden');
   document.getElementById('backtest-player-frame').classList.add('hidden');
   document.getElementById('player-meta').innerHTML = '';
+  document.getElementById('btn-analyze-stream').disabled = true;
+  resetAnalysisState(true);
   if (btPlayer) {
     try { btPlayer.destroy(); } catch {}
     btPlayer = null;
+  }
+}
+
+function setupAnalyzeButton() {
+  const btn = document.getElementById('btn-analyze-stream');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!btStreamId || !btChannelId) {
+      btShowToast('Select a stream first', 'error');
+      return;
+    }
+    await analyzeStream(btStreamId, btChannelId);
+  });
+}
+
+async function analyzeStream(videoId, channelId) {
+  const btn = document.getElementById('btn-analyze-stream');
+  const panel = document.getElementById('analysis-panel');
+  const status = document.getElementById('analysis-status');
+
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  panel.classList.remove('hidden');
+  status.textContent = 'Scanning transcript and extracting trade moments...';
+  document.getElementById('analysis-markers').innerHTML = '';
+
+  try {
+    const res = await fetch(
+      `/.netlify/functions/analyze-stream?videoId=${encodeURIComponent(videoId)}&channelId=${encodeURIComponent(channelId)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const markers = Array.isArray(data.markers) ? data.markers : [];
+    btMarkers = markers;
+
+    if (!markers.length) {
+      status.textContent = 'Analysis completed, but no trade markers were found for this stream.';
+      return;
+    }
+
+    const cacheNote = data.cached ? 'Cached analysis loaded.' : 'Analysis completed.';
+    status.textContent = `${cacheNote} Click a marker to jump the player.`;
+    renderAnalysisMarkers(markers);
+    btShowToast(`Loaded ${markers.length} marker${markers.length === 1 ? '' : 's'}`, 'success');
+  } catch (err) {
+    status.textContent = `Analysis unavailable: ${err.message}`;
+    btShowToast(`Analyze failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analyze';
+  }
+}
+
+function resetAnalysisState(hidePanel = false) {
+  const panel = document.getElementById('analysis-panel');
+  const status = document.getElementById('analysis-status');
+  if (!panel || !status) return;
+  document.getElementById('analysis-markers').innerHTML = '';
+  status.textContent = btStreamId
+    ? 'Run analysis to extract entry, exit, and discussion moments.'
+    : 'Select a stream to enable transcript analysis.';
+  if (hidePanel) {
+    panel.classList.add('hidden');
+  } else {
+    panel.classList.remove('hidden');
   }
 }
 
@@ -286,6 +361,42 @@ function renderPlayerMeta(stream) {
   }
 
   meta.innerHTML = parts.join('');
+}
+
+function renderAnalysisMarkers(markers) {
+  const panel = document.getElementById('analysis-panel');
+  const container = document.getElementById('analysis-markers');
+  if (!panel || !container) return;
+  panel.classList.remove('hidden');
+  container.innerHTML = '';
+
+  for (const marker of markers) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `analysis-marker marker-${normalizeMarkerType(marker.type)}`;
+    btn.innerHTML = `
+      <span class="marker-time">${btEscHtml(fmtTime(Number(marker.ts) || 0))}</span>
+      <span class="marker-label">${btEscHtml(marker.label || 'Marker')}</span>
+    `;
+    btn.addEventListener('click', () => seekToMarker(marker));
+    container.appendChild(btn);
+  }
+}
+
+function seekToMarker(marker) {
+  const ts = Number(marker.ts);
+  if (!Number.isFinite(ts) || ts < 0) return;
+
+  try {
+    btPlayer?.seekTo(ts, true);
+    const tsInput = document.getElementById('trade-timestamp');
+    if (tsInput) tsInput.value = String(Math.floor(ts));
+  } catch {}
+}
+
+function normalizeMarkerType(type) {
+  if (type === 'entry' || type === 'exit') return type;
+  return 'discussion';
 }
 
 
@@ -349,34 +460,19 @@ function setupJournalPairSelect() {
 
 // ── R:R auto-calc ─────────────────────────────────────────────────────────
 function setupRRCalc() {
-  ['trade-entry', 'trade-exit', 'trade-stop', 'trade-result'].forEach(id => {
-    document.getElementById(id).addEventListener('input', calcRR);
-    if (id === 'trade-result') document.getElementById(id).addEventListener('change', calcRR);
+  ['trade-entry', 'trade-exit', 'trade-stop'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', calcRR);
   });
 }
 
 function calcRR() {
-  const result = document.getElementById('trade-result').value;
-  const rrEl   = document.getElementById('trade-rr');
-
-  if (result === 'loss') {
-    rrEl.value = '-1.00';
-    return;
-  }
-  if (result === 'be') {
-    rrEl.value = '0.00';
-    return;
-  }
-
   const entry = parseFloat(document.getElementById('trade-entry').value);
   const exit  = parseFloat(document.getElementById('trade-exit').value);
   const stop  = parseFloat(document.getElementById('trade-stop').value);
-
+  const rrEl  = document.getElementById('trade-rr');
   if (!isNaN(entry) && !isNaN(exit) && !isNaN(stop) && stop !== entry) {
-    const raw = (exit - entry) / (entry - stop);
-    // If user marked 'win' but math is negative, it's probably a wrong setup, but we'll show absolute RR as a "gain" multiple.
-    // However, the cleanest is just (exit-entry)/(entry-stop).
-    rrEl.value = Math.max(0, raw).toFixed(2);
+    rrEl.value = Math.abs((exit - entry) / (entry - stop)).toFixed(2);
   } else {
     rrEl.value = '';
   }
@@ -441,6 +537,7 @@ function setupJournalForm() {
       });
       applyReviewFilter();
       await loadJournalEntries(btChannelId, btStreamId);
+      await loadChannelAnalytics(btChannelId);
     } catch (err) {
       btShowToast(`Save failed: ${err.message}`, 'error');
     } finally {
@@ -516,16 +613,81 @@ async function deleteJournalEntry(channelId, streamId, entryId) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     btShowToast('Entry deleted', 'info');
     await loadJournalEntries(channelId, streamId);
+    await loadChannelAnalytics(channelId);
   } catch (err) {
     btShowToast(`Delete failed: ${err.message}`, 'error');
   }
 }
 
+// ── Analytics ─────────────────────────────────────────────────────────────
+function clearAnalytics() {
+  const empty = document.getElementById('analytics-empty');
+  const wrap = document.getElementById('analytics-table-wrap');
+  if (!empty || !wrap) return;
+  empty.style.display = '';
+  empty.textContent = 'No trade data yet.';
+  wrap.classList.add('hidden');
+}
+
+async function loadChannelAnalytics(channelId) {
+  if (!btStreamId) return;
+
+  try {
+    const res     = await fetch(`/.netlify/functions/journal?channelId=${encodeURIComponent(channelId)}&streamId=${encodeURIComponent(btStreamId)}`);
+    const entries = await res.json();
+    if (!res.ok || !entries.length) { clearAnalytics(); return; }
+
+    const stats = computeStats(entries, btStreamTitle || btStreamId);
+    renderAnalyticsTable([stats]);
+  } catch {
+    clearAnalytics();
+  }
+}
+
+function computeStats(entries, label) {
+  const wins   = entries.filter(e => e.result === 'win').length;
+  const losses = entries.filter(e => e.result === 'loss').length;
+  const be     = entries.filter(e => e.result === 'be').length;
+  const total  = entries.length;
+  const rrVals = entries.map(e => e.rr).filter(v => v != null && !isNaN(v));
+  const avgRR  = rrVals.length ? (rrVals.reduce((a, b) => a + b, 0) / rrVals.length).toFixed(2) : '—';
+  return {
+    label,
+    total,
+    winRate: total ? `${Math.round((wins / total) * 100)}%` : '—',
+    avgRR,
+    wins,
+    losses,
+    be,
+  };
+}
+
+function renderAnalyticsTable(rows) {
+  const empty = document.getElementById('analytics-empty');
+  const wrap  = document.getElementById('analytics-table-wrap');
+  const tbody = document.querySelector('#analytics-table tbody');
+  if (!empty || !wrap || !tbody) return;
+
+  empty.style.display = 'none';
+  wrap.classList.remove('hidden');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td title="${btEscAttr(r.label)}">${btEscHtml(truncate(r.label, 28))}</td>
+      <td>${r.total}</td>
+      <td>${r.winRate}</td>
+      <td>${r.avgRR}</td>
+      <td style="color:var(--accent)">${r.wins}</td>
+      <td style="color:var(--live-red)">${r.losses}</td>
+      <td style="color:#6080ff">${r.be}</td>
+    </tr>
+  `).join('');
+}
 
 // ── Screenshot auto-fill ─────────────────────────────────────────────────
 function setupScreenshotPaste() {
   const dropArea = document.getElementById('screenshot-drop-area');
   const clearBtn = document.getElementById('btn-clear-screenshot');
+  if (!dropArea || !clearBtn) return;
 
   // Drag-and-drop
   dropArea.addEventListener('dragover', e => {
@@ -542,11 +704,14 @@ function setupScreenshotPaste() {
 
   // Upload button — opens file picker (works on mobile)
   const fileInput = document.getElementById('screenshot-file-input');
-  document.getElementById('btn-upload-screenshot').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files[0];
-    if (file) { processScreenshot(file); fileInput.value = ''; }
-  });
+  const uploadBtn = document.getElementById('btn-upload-screenshot');
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) { processScreenshot(file); fileInput.value = ''; }
+    });
+  }
 
   // Global paste listener
   document.addEventListener('paste', e => {

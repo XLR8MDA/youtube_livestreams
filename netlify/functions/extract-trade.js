@@ -15,7 +15,7 @@
  */
 
 const GROQ_API          = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const GROQ_VISION_MODEL = 'llama-3.2-11b-vision-preview';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return respond(405, { error: 'Method not allowed' });

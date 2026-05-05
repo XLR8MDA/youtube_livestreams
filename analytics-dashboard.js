@@ -90,7 +90,7 @@ async function openChDaily(channelId, channelName) {
           <td>${t.entry != null ? t.entry : '—'}</td>
           <td>${t.stop  != null ? t.stop  : '—'}</td>
           <td>${t.exit  != null ? t.exit  : '—'}</td>
-          <td class="ch-cell-rr">${t.rr != null ? t.rr + 'R' : '—'}</td>
+          <td class="ch-cell-rr${result === 'loss' ? ' negative' : ''}">${t.rr != null ? t.rr + 'R' : '—'}</td>
           <td class="ch-cell-notes">${esc(t.notes || '')}</td>
           <td>${videoLink}</td>
         </tr>`;

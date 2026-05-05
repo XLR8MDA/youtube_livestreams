@@ -128,7 +128,7 @@ exports.handler = async (event) => {
 
   // Search channels with no known videoId — throttled to once every 15 min
   const SEARCH_INTERVAL_MS = 15 * 60 * 1000;
-  const withoutVideo = channels.filter(c => !newState[c.channel_id]?.videoId);
+  const withoutVideo = channels.filter(c => !newState[c.channel_id]?.videoId && !c.manual_video_id);
   for (const ch of withoutVideo) {
     const lastSearched = prevState[ch.channel_id]?.lastSearchedAt;
     if (!isManual && lastSearched && (Date.now() - lastSearched.getTime()) < SEARCH_INTERVAL_MS) {

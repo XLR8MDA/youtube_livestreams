@@ -23,7 +23,11 @@ exports.handler = async (event) => {
         COUNT(*) FILTER (WHERE result = 'win')::int AS wins,
         COUNT(*) FILTER (WHERE result = 'loss')::int AS losses,
         COUNT(*) FILTER (WHERE result = 'be')::int AS be,
-        AVG(rr) AS avg_rr,
+        AVG(CASE 
+          WHEN result = 'loss' THEN -1.0
+          WHEN result = 'be' THEN 0.0
+          ELSE rr 
+        END) AS avg_rr,
         COUNT(*) FILTER (WHERE direction = 'long')::int AS longs,
         COUNT(*) FILTER (WHERE direction = 'short')::int AS shorts
       FROM journal_entries

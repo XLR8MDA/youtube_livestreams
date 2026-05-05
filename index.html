@@ -7,7 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="backtest.css">
+  <link rel="stylesheet" href="stats.css">
+  <link rel="stylesheet" href="course.css">
 </head>
 <body>
 
@@ -18,14 +22,8 @@
       <button id="tab-live" class="tab-btn active" data-tab="live" type="button">Live</button>
       <button id="tab-backtest" class="tab-btn" data-tab="backtest" type="button">Backtest</button>
       <button id="tab-stats" class="tab-btn" data-tab="stats" type="button">Stats</button>
-      <button id="tab-stream-log" class="tab-btn" data-tab="stream-log" type="button">Stream Log</button>
+      <button id="tab-course" class="tab-btn" data-tab="course" type="button">Course</button>
     </nav>
-
-    <div id="quota-widget" title="YouTube API units used today · resets at midnight Pacific Time">
-      <span id="quota-units-display">0 u</span>
-      <span class="quota-sep">·</span>
-      <span id="quota-timer-display">--:--:--</span>
-    </div>
 
     <div id="toolbar-right">
       <span id="live-count">&mdash; LIVE</span>
@@ -42,14 +40,20 @@
   <section id="backtest-panel" class="hidden" aria-labelledby="tab-backtest">
     <div class="backtest-shell">
       <aside class="backtest-sidebar">
-        <div class="backtest-card">
+        <div class="backtest-card backtest-card-compact">
+          <div class="backtest-card-kicker">Workspace</div>
+          <h2 class="backtest-card-title">Replay and journal past streams</h2>
+          <p class="backtest-card-copy">Load a completed stream, extract trade ideas, and keep the review process in one focused workspace.</p>
+        </div>
+
+        <div class="backtest-card backtest-card-compact">
           <div class="panel-label">Channel</div>
           <select id="backtest-channel-select" aria-label="Backtest channel">
             <option value="">Select a channel</option>
           </select>
         </div>
 
-        <div class="backtest-card">
+        <div class="backtest-card backtest-card-compact">
           <div class="panel-label">Manual URL</div>
           <p class="manual-url-hint">Paste an individual stream URL (watch?v=...) to load without API quota.</p>
           <div class="manual-url-row">
@@ -59,13 +63,13 @@
           <div id="manual-url-status" class="panel-status" style="display:none"></div>
         </div>
 
-        <div class="backtest-card">
+        <div class="backtest-card stream-browser-card">
           <div class="backtest-section-head">
             <div>
               <div class="panel-label">Past Streams</div>
               <p id="streams-subtitle">Pick a channel to load completed livestreams.</p>
             </div>
-            <div style="display:flex;gap:6px;align-items:center;">
+            <div class="section-actions">
               <button id="btn-filter-reviewed" class="ghost-btn" type="button" title="Hide reviewed streams">Hide done</button>
               <button id="btn-load-more-streams" class="ghost-btn hidden" type="button">More</button>
             </div>
@@ -76,6 +80,19 @@
       </aside>
 
       <div class="backtest-main">
+        <div class="backtest-card backtest-overview-card">
+          <div class="backtest-overview-copy">
+            <div class="panel-label">Backtest Flow</div>
+            <h3>Review faster with replay, markers, and screenshot-assisted journaling.</h3>
+            <p>Choose a stream from the rail, inspect the replay, then log the trade with timestamped notes and extracted chart details.</p>
+          </div>
+          <div class="backtest-overview-stats">
+            <div class="overview-pill">Replay</div>
+            <div class="overview-pill">Review</div>
+            <div class="overview-pill">Journal</div>
+          </div>
+        </div>
+
         <div class="backtest-card player-card">
           <div class="backtest-section-head">
             <div>
@@ -84,7 +101,6 @@
             </div>
             <div class="player-tools">
               <div id="player-meta" class="player-meta"></div>
-              <button id="btn-analyze-stream" class="ghost-btn" type="button" disabled>Analyze</button>
             </div>
           </div>
           <div id="backtest-player-shell">
@@ -96,46 +112,12 @@
               <div id="backtest-player"></div>
             </div>
           </div>
-          <div id="analysis-panel" class="analysis-panel hidden">
-            <div class="backtest-section-head">
-              <div>
-                <div class="panel-label">Trade Markers</div>
-                <p id="analysis-status">Run analysis to extract entry, exit, and discussion moments.</p>
-              </div>
-            </div>
-            <div id="analysis-markers" class="analysis-markers"></div>
-          </div>
         </div>
 
-        <div class="backtest-card analytics-card">
-          <div class="backtest-section-head">
-            <div>
-              <div class="panel-label">Analytics</div>
-              <p>Aggregated journal stats across saved entries.</p>
-            </div>
-          </div>
-          <div id="analytics-empty" class="panel-status">No trade data yet.</div>
-          <div id="analytics-table-wrap" class="hidden">
-            <table id="analytics-table">
-              <thead>
-                <tr>
-                  <th>Channel</th>
-                  <th>Trades</th>
-                  <th>Win Rate</th>
-                  <th>Avg R:R</th>
-                  <th>Wins</th>
-                  <th>Losses</th>
-                  <th>BE</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
       </div>
 
       <aside class="backtest-journal">
-        <div class="backtest-card">
+        <div class="backtest-card journal-form-card">
           <div class="backtest-section-head">
             <div>
               <div class="panel-label">Trade Journal</div>
@@ -149,7 +131,6 @@
               <span class="screenshot-icon">&#128247;</span>
               <span>Drop chart screenshot here, or</span>
               <div class="screenshot-btns">
-                <button id="btn-paste-screenshot" type="button" class="ghost-btn">Paste (Ctrl+V)</button>
                 <button id="btn-upload-screenshot" type="button" class="ghost-btn">Upload</button>
               </div>
               <input id="screenshot-file-input" type="file" accept="image/*" style="display:none">
@@ -248,96 +229,60 @@
     </div>
   </section>
 
-  <section id="stream-log-panel" class="hidden" aria-labelledby="tab-stream-log">
-    <div class="sl-shell">
-      <header class="sl-header">
-        <div class="sl-filters">
-          <span class="panel-label">Stream Log</span>
-          <select id="sl-days" aria-label="Date range">
-            <option value="7">Last 7 days</option>
-            <option value="30" selected>Last 30 days</option>
-            <option value="90">Last 90 days</option>
-          </select>
-          <select id="sl-channel" aria-label="Filter by channel">
-            <option value="">All channels</option>
-          </select>
-        </div>
-        <button id="btn-sl-refresh" class="ghost-btn" type="button">&#8635; Refresh</button>
-      </header>
-
-      <div id="sl-content" class="sl-content">
-        <div id="sl-status" class="sl-empty">
-          <div class="big-icon">&#128203;</div>
-          <p>Loading stream log&hellip;</p>
-        </div>
-        <div id="sl-days-list"></div>
-      </div>
-    </div>
-  </section>
 
   <section id="stats-panel" class="hidden" aria-labelledby="tab-stats">
     <div class="stats-shell">
       <header class="stats-header">
         <div>
           <div class="panel-label">Performance Dashboard</div>
-          <p class="stats-subtitle">All logged trades across every tracked channel.</p>
+          <p class="stats-subtitle">Comprehensive analytics across all tracked channels.</p>
         </div>
-        <button id="btn-stats-refresh" class="ghost-btn" type="button">&#8635; Refresh</button>
+        <button id="btn-stats-refresh" class="ghost-btn" type="button">&#8635; Refresh Data</button>
       </header>
 
       <div id="stats-status" class="stats-status">
         <div class="big-icon">&#128200;</div>
-        <p>Loading performance data&hellip;</p>
+        <p>Analyzing journal data&hellip;</p>
       </div>
 
       <div id="stats-content" class="hidden">
         <div id="stats-cards" class="stats-cards"></div>
 
-        <div class="stats-grid" style="grid-template-columns: 1fr; margin-bottom: 24px;">
-          <section class="stats-card">
-            <div class="backtest-section-head">
-              <div>
-                <div class="panel-label">Quarterly Performance</div>
-                <p>Aggregate stats grouped by year and quarter.</p>
-              </div>
-            </div>
-            <div class="stats-table-wrap">
-              <table id="stats-quarter-table" class="stats-table">
-                <thead>
-                  <tr>
-                    <th>Quarter</th>
-                    <th>Trades</th>
-                    <th>Win Rate</th>
-                    <th>Avg R:R</th>
-                    <th style="color:var(--accent)">W</th>
-                    <th style="color:var(--live-red)">L</th>
-                    <th style="color:#6080ff">BE</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+        <section class="stats-card" style="margin-top: 24px;">
+          <h3 class="stats-card-title">Quarterly Growth</h3>
+          <p class="stats-card-desc">Your performance trended by year and quarter.</p>
+          <div class="stats-table-wrap">
+            <table id="stats-quarter-table" class="stats-table">
+              <thead>
+                <tr>
+                  <th>Period</th>
+                  <th>Trades</th>
+                  <th>Win Rate</th>
+                  <th>Avg R:R</th>
+                  <th>W</th>
+                  <th>L</th>
+                  <th>BE</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
 
-        <div class="stats-grid">
+        <div class="stats-grid" style="margin-top: 24px;">
           <section class="stats-card">
-            <div class="backtest-section-head">
-              <div>
-                <div class="panel-label">Channels</div>
-                <p>Per-channel win rate, R:R, and trade volume.</p>
-              </div>
-            </div>
+            <h3 class="stats-card-title">Channel Leaderboard</h3>
+            <p class="stats-card-desc">Performance breakdown per YouTube channel.</p>
             <div class="stats-table-wrap">
               <table id="stats-channel-table" class="stats-table">
                 <thead>
                   <tr>
                     <th>Channel</th>
                     <th>Trades</th>
-                    <th>Win Rate</th>
+                    <th>WR%</th>
                     <th>Avg R:R</th>
-                    <th>Wins</th>
-                    <th>Losses</th>
+                    <th>W</th>
+                    <th>L</th>
                     <th>BE</th>
                     <th>Pairs</th>
                   </tr>
@@ -348,22 +293,18 @@
           </section>
 
           <section class="stats-card">
-            <div class="backtest-section-head">
-              <div>
-                <div class="panel-label">Pairs</div>
-                <p>How each market is performing in your journal.</p>
-              </div>
-            </div>
+            <h3 class="stats-card-title">Market Edge</h3>
+            <p class="stats-card-desc">Which pairs yield the best results for you.</p>
             <div class="stats-table-wrap">
               <table id="stats-pair-table" class="stats-table">
                 <thead>
                   <tr>
                     <th>Pair</th>
                     <th>Trades</th>
-                    <th>Win Rate</th>
+                    <th>WR%</th>
                     <th>Avg R:R</th>
-                    <th>Wins</th>
-                    <th>Losses</th>
+                    <th>W</th>
+                    <th>L</th>
                     <th>BE</th>
                   </tr>
                 </thead>
@@ -442,12 +383,56 @@
     </div>
   </div>
 
+  <!-- Course Panel -->
+  <section id="course-panel" class="hidden" aria-labelledby="tab-course">
+    <div id="course-status" class="course-loading-state">
+      <div class="course-status-icon">📚</div>
+      <p>Loading playlists…</p>
+    </div>
+    <div id="course-content" class="course-shell hidden">
+      <!-- Sidebar: phase nav -->
+      <aside class="course-sidebar">
+        <div class="panel-label" style="padding:14px 14px 8px">Curriculum</div>
+        <nav id="course-phase-nav"></nav>
+      </aside>
+
+      <!-- Lesson list -->
+      <div class="course-main">
+        <div class="course-main-header">
+          <div>
+            <h2 id="course-phase-heading" class="course-phase-heading">Select a phase</h2>
+            <span id="course-phase-weeks" class="course-phase-weeks"></span>
+          </div>
+        </div>
+        <div id="course-lesson-list" class="course-lesson-list"></div>
+      </div>
+
+      <!-- Player -->
+      <aside class="course-player-panel">
+        <div id="course-player-shell" class="course-player-shell course-player-empty-state">
+          <div class="course-player-empty">
+            <div class="big-icon">▶</div>
+            <p>Click a lesson to watch</p>
+          </div>
+          <div class="course-player-wrap">
+            <div id="course-yt-player"></div>
+          </div>
+          <div class="course-player-info">
+            <div id="course-player-tag" class="course-player-tag"></div>
+            <div id="course-player-title" class="course-player-title"></div>
+            <button id="btn-course-mark-complete" class="course-mark-btn" type="button">Mark Complete</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
   <div id="toast-container" aria-live="polite"></div>
 
   <script src="config.js"></script>
   <script src="app.js"></script>
   <script src="backtest.js"></script>
   <script src="analytics-dashboard.js"></script>
-  <script src="stream-log-ui.js"></script>
+  <script src="course.js"></script>
 </body>
 </html>

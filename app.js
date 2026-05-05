@@ -29,9 +29,6 @@ let playerMap = new Map();  // channelId → YT.Player instance
 let activeAudioChannel = null; // channelId with audio on; null = all muted
 let gridCols = 1;  // computed automatically from live count
 let gridRows = 1;
-let fastPollTimer = null;
-let slowPollTimer = null;
-let syncTimer     = null;
 let localYoutubeProxyAvailable = false;
 
 const LIVE_EDGE_THRESHOLD_S = 120; // auto-seek only if >2min behind live edge (normal HLS buffer is 15-30s)
@@ -42,61 +39,16 @@ let isRefreshing = false;
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  setupTabs();    // synchronous — must run before any awaits so tabs work immediately
+  setupToolbar();
+  setupModal();
   await loadState();
   await loadCustomPairs();
   await detectLocalYoutubeProxy();
   requestNotificationPermission();
-  setupToolbar();
-  setupModal();
   injectYouTubeAPI();
-  startQuotaClock();
-  document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
-// ── YouTube Quota Tracker ─────────────────────────────────────────────────
-// Units reset daily at midnight Pacific Time (America/Los_Angeles).
-// search = 100 units, videos/channels = 1 unit each.
-
-function getPtDateString() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
-}
-
-function trackQuotaUnits(n) {
-  const today  = getPtDateString();
-  const stored = JSON.parse(localStorage.getItem('yt_quota') || '{}');
-  if (stored.date !== today) { stored.units = 0; stored.date = today; }
-  stored.units = (stored.units || 0) + n;
-  localStorage.setItem('yt_quota', JSON.stringify(stored));
-  const el = document.getElementById('quota-units-display');
-  if (el) el.textContent = stored.units.toLocaleString() + ' u';
-}
-window.trackQuotaUnits = trackQuotaUnits; // expose to backtest.js
-
-function startQuotaClock() {
-  // Restore today's counter
-  const stored = JSON.parse(localStorage.getItem('yt_quota') || '{}');
-  const el = document.getElementById('quota-units-display');
-  if (el && stored.date === getPtDateString()) {
-    el.textContent = (stored.units || 0).toLocaleString() + ' u';
-  }
-
-  function tick() {
-    // Seconds elapsed since midnight Pacific Time
-    const ptTime = new Date().toLocaleString('en-US', {
-      timeZone: 'America/Los_Angeles', hour12: false,
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-    const [h, m, s] = ptTime.split(':').map(Number);
-    const remaining = 86400 - (h * 3600 + m * 60 + s);
-    const hh = String(Math.floor(remaining / 3600)).padStart(2, '0');
-    const mm = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
-    const ss = String(remaining % 60).padStart(2, '0');
-    const timerEl = document.getElementById('quota-timer-display');
-    if (timerEl) timerEl.textContent = `${hh}:${mm}:${ss}`;
-  }
-  tick();
-  setInterval(tick, 1000);
-}
 
 // ── State Persistence ─────────────────────────────────────────────────────
 async function loadState() {
@@ -311,7 +263,6 @@ async function initDashboard() {
   showSkeletons();
   await refreshAllChannels();
   buildGrid();
-  startPolling();
 }
 
 // ── API Calls ─────────────────────────────────────────────────────────────
@@ -336,7 +287,6 @@ async function apiFetch(endpoint, params) {
     const msg = err?.error?.message || `HTTP ${res.status}`;
     throw new Error(msg);
   }
-  trackQuotaUnits(endpoint === 'search' ? 100 : 1);
   return res.json();
 }
 
@@ -421,7 +371,7 @@ async function refreshAllChannels() {
   }
 
   // Search only offline channels for new streams (100 units each)
-  const offlineChannels = channels.filter(c => !c.videoId);
+  const offlineChannels = channels.filter(c => !c.videoId && !c.manualVideoId);
   for (const ch of offlineChannels) {
     try {
       const videoId = await fetchLiveVideoId(ch.channelId);
@@ -896,8 +846,6 @@ async function addChannel(inputValue) {
     }
   }
 
-  // Ensure polling is running (it may not have started if this is the first channel)
-  startPolling();
 }
 
 function removeChannel(channelId) {
@@ -914,58 +862,6 @@ function removeChannel(channelId) {
   if (ch) showToast(`Removed ${ch.name}`, 'info');
 }
 
-// ── Polling ───────────────────────────────────────────────────────────────
-function startPolling() {
-  stopPolling(); // always clear before starting — prevents stacking timers
-
-  const fast = 30_000;   // every 30s: confirm known live streams still live (1 quota unit)
-  const slow = 120_000;  // every 2min: detect newly-started streams (100 units/channel)
-
-  fastPollTimer = setInterval(checkLiveStatus, fast);
-  slowPollTimer = setInterval(async () => {
-    // Snapshot live video IDs before refresh
-    const before = channels.filter(c => c.isLive && c.videoId).map(c => c.videoId).sort().join(',');
-    await refreshAllChannels();
-    const after = channels.filter(c => c.isLive && c.videoId).map(c => c.videoId).sort().join(',');
-    // Only rebuild grid (which destroys players) if the live set actually changed
-    if (before !== after) buildGrid();
-  }, slow);
-  syncTimer = setInterval(autoSyncLiveEdge, 60_000); // every 60s: nudge lagging streams to live edge
-}
-
-function stopPolling() {
-  clearInterval(fastPollTimer);
-  clearInterval(slowPollTimer);
-  clearInterval(syncTimer);
-  fastPollTimer = null;
-  slowPollTimer = null;
-  syncTimer     = null;
-}
-
-// Seek any player that has drifted more than LIVE_EDGE_THRESHOLD_S behind the live edge
-function autoSyncLiveEdge() {
-  for (const [, player] of playerMap) {
-    try {
-      const state    = player.getPlayerState();
-      const duration = player.getDuration();
-      const current  = player.getCurrentTime();
-      // State 1 = playing. Only nudge actively playing streams.
-      if (state === 1 && duration > 0 && (duration - current) > LIVE_EDGE_THRESHOLD_S) {
-        player.seekTo(duration, true);
-      }
-    } catch {}
-  }
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    stopPolling();
-  } else {
-    // Tab came back into focus — sync to live edge immediately, then restart timers
-    autoSyncLiveEdge();
-    checkLiveStatus().then(() => startPolling());
-  }
-}
 
 // ── Toolbar Setup ─────────────────────────────────────────────────────────
 function setupToolbar() {
@@ -1010,8 +906,6 @@ function setupModal() {
     saveApiKey(val);
     document.getElementById('api-key-section').classList.add('key-set');
     showToast('API key saved', 'success');
-    // Reload dashboard now that we have a key
-    stopPolling();
     initDashboard();
   });
 
@@ -1141,4 +1035,39 @@ function escHtml(str) {
 
 function escAttr(str) {
   return String(str).replace(/"/g, '&quot;');
+}
+
+// ── Tab Switching ─────────────────────────────────────────────────────────
+// Lives here because it controls the whole page layout, not just backtest.
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+}
+
+function switchTab(tab) {
+  const isLive     = tab === 'live';
+  const isBacktest = tab === 'backtest';
+  const isStats    = tab === 'stats';
+  const isCourse   = tab === 'course';
+
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
+  document.getElementById('grid-container').classList.toggle('hidden', !isLive);
+  document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
+  document.getElementById('stats-panel').classList.toggle('hidden', !isStats);
+  document.getElementById('course-panel').classList.toggle('hidden', !isCourse);
+
+  ['btn-sync', 'btn-refresh'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLive ? '' : 'none';
+  });
+
+  if (isBacktest) {
+    if (typeof populateChannelSelect === 'function') populateChannelSelect();
+    if (typeof populatePairSelect    === 'function') populatePairSelect();
+  }
+  if (isStats  && typeof onStatsTabActivated  === 'function') onStatsTabActivated();
+  if (isCourse && typeof onCourseTabActivated === 'function') onCourseTabActivated();
 }

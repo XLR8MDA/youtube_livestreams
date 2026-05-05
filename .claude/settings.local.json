@@ -31,7 +31,13 @@
       "Bash(node:*)",
       "Bash(python -m json.tool)",
       "Bash(git commit:*)",
-      "Bash(npm --version)"
+      "Bash(npm --version)",
+      "Bash(netlify dev:*)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill:*)",
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(yt-dlp --version)",
+      "Bash(pip show:*)"
     ]
   }
 }

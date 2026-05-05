@@ -1,0 +1,60 @@
+⬥ Injecting environment variable values for all scopes
+⬥ Ignored general context env var: LANG (defined in process)
+⬥ Injected netlify.toml file env vars: NODE_VERSION
+⬥ Injected .env file env vars: YOUTUBE_API_KEY, YOUTUBE_API_KEY_2, YOUTUBE_API_KEY_3, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DATABASE_URL, GROQ_API_KEY
+⬥ No app server detected. Using simple static server
+⬥ Running static server from "MultiPlay"
+⬥ Setting up local dev server
+
+⬥ Static server listening to 3999
+⬥ Loaded function youtube
+⬥ Loaded function _whisper
+⬥ Loaded function transcript
+⬥ Loaded function past-streams
+⬥ Loaded function notify
+⬥ Loaded function live-checker
+⬥ Loaded function journal
+⬥ Loaded function reviewed-streams
+⬥ Loaded function journal-dashboard
+⬥ Loaded function stream-log
+⬥ Loaded function extract-trade
+⬥ Loaded function debug-streams
+⬥ Loaded function custom-pairs
+⬥ Loaded function channels
+⬥ Loaded function course-playlist
+⬥ Loaded function auto-analyze
+⬥ Loaded function analyze-stream
+⬥ Loaded function channel-daily
+
+   ╭─────────────────────── ⬥  ────────────────────────╮
+   │                                                   │
+   │   Local dev server ready: http://localhost:8888   │
+   │                                                   │
+   ╰───────────────────────────────────────────────────╯
+
+Request from ::1: GET /.netlify/functions/youtube
+[youtube fn] keys available: 3 | method: GET
+Response with status 200 in 12 ms.
+Request from ::1: GET /.netlify/functions/youtube?endpoint=search&part=id&channelId=UCgNtwk4XkrFaKhmoISlZCeA&eventType=live&type=video&maxResults=1
+[youtube fn] keys available: 3 | method: GET
+Response with status 200 in 1072 ms.
+Request from ::1: GET /.netlify/functions/course-playlist?playlistId=PLyobF5Rf4liTQrcKtSmbwaCtX71lUP-n_
+Request from ::1: GET /.netlify/functions/course-playlist?playlistId=PLguWwLNVYKWfGzKcW358QivkQceAtW5B-
+Request from ::1: GET /.netlify/functions/course-playlist?playlistId=PLguWwLNVYKWeGlaKrhB3Tp9MfMmj7BlQg
+Response with status 500 in 5798 ms.
+Response with status 500 in 6126 ms.
+Response with status 500 in 6251 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 2921 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 1834 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 910 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 910 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 913 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 911 ms.
+Request from ::1: GET /.netlify/functions/journal-dashboard
+Response with status 200 in 915 ms.

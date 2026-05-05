@@ -32,7 +32,11 @@ exports.handler = async () => {
         COUNT(*) FILTER (WHERE result = 'win')::int as wins,
         COUNT(*) FILTER (WHERE result = 'loss')::int as losses,
         COUNT(*) FILTER (WHERE result = 'be')::int as be,
-        AVG(rr) as avg_rr
+        AVG(CASE 
+          WHEN result = 'loss' THEN -1.0
+          WHEN result = 'be' THEN 0.0
+          ELSE rr 
+        END) as avg_rr
       FROM journal_entries
     `;
     const t = totalRows[0];
@@ -54,7 +58,11 @@ exports.handler = async () => {
         COUNT(*) FILTER (WHERE result = 'win')::int as wins,
         COUNT(*) FILTER (WHERE result = 'loss')::int as losses,
         COUNT(*) FILTER (WHERE result = 'be')::int as be,
-        AVG(rr) as avg_rr
+        AVG(CASE 
+          WHEN result = 'loss' THEN -1.0
+          WHEN result = 'be' THEN 0.0
+          ELSE rr 
+        END) as avg_rr
       FROM journal_entries
       GROUP BY year, quarter
       ORDER BY year DESC, quarter DESC
@@ -79,7 +87,11 @@ exports.handler = async () => {
         COUNT(*) FILTER (WHERE result = 'win')::int as wins,
         COUNT(*) FILTER (WHERE result = 'loss')::int as losses,
         COUNT(*) FILTER (WHERE result = 'be')::int as be,
-        AVG(rr) as avg_rr,
+        AVG(CASE 
+          WHEN result = 'loss' THEN -1.0
+          WHEN result = 'be' THEN 0.0
+          ELSE rr 
+        END) as avg_rr,
         array_agg(DISTINCT pair) FILTER (WHERE pair IS NOT NULL) as pairs
       FROM journal_entries
       GROUP BY channel_id
@@ -104,7 +116,11 @@ exports.handler = async () => {
         COUNT(*) FILTER (WHERE result = 'win')::int as wins,
         COUNT(*) FILTER (WHERE result = 'loss')::int as losses,
         COUNT(*) FILTER (WHERE result = 'be')::int as be,
-        AVG(rr) as avg_rr
+        AVG(CASE 
+          WHEN result = 'loss' THEN -1.0
+          WHEN result = 'be' THEN 0.0
+          ELSE rr 
+        END) as avg_rr
       FROM journal_entries
       WHERE pair IS NOT NULL
       GROUP BY pair

@@ -65,7 +65,10 @@
               <div class="panel-label">Past Streams</div>
               <p id="streams-subtitle">Pick a channel to load completed livestreams.</p>
             </div>
-            <button id="btn-load-more-streams" class="ghost-btn hidden" type="button">More</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button id="btn-filter-reviewed" class="ghost-btn" type="button" title="Hide reviewed streams">Hide done</button>
+              <button id="btn-load-more-streams" class="ghost-btn hidden" type="button">More</button>
+            </div>
           </div>
           <div id="stream-list-status" class="panel-status">No channel selected.</div>
           <div id="backtest-stream-list" class="stream-list" aria-live="polite"></div>

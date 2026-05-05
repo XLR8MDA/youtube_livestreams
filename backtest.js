@@ -1,13 +1,14 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────────────────────────────
-let btPlayer       = null;   // YT.Player for backtest
-let btChannelId    = null;
-let btStreamId     = null;
-let btStreamTitle  = null;
-let btNextToken    = null;   // pagination token for past-streams
-let btStreamMeta   = null;
-let btMarkers      = [];
+let btPlayer             = null;   // YT.Player for backtest
+let btChannelId          = null;
+let btStreamId           = null;
+let btStreamTitle        = null;
+let btNextToken          = null;   // pagination token for past-streams
+let btStreamMeta         = null;
+let btMarkers            = [];
+let btShowOnlyUnreviewed = false;
 
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initBacktest);
@@ -22,6 +23,40 @@ function initBacktest() {
   setupJournalPairSelect();
   setupAnalyzeButton();
   setupScreenshotPaste();
+  setupReviewFilter();
+}
+
+// ── Reviewed streams (localStorage) ──────────────────────────────────────
+function getReviewedStreams() {
+  try { return new Set(JSON.parse(localStorage.getItem('bt_reviewed') || '[]')); }
+  catch { return new Set(); }
+}
+
+function setStreamReviewed(videoId, reviewed) {
+  const set = getReviewedStreams();
+  reviewed ? set.add(videoId) : set.delete(videoId);
+  localStorage.setItem('bt_reviewed', JSON.stringify([...set]));
+}
+
+function isStreamReviewed(videoId) {
+  return getReviewedStreams().has(videoId);
+}
+
+function setupReviewFilter() {
+  const btn = document.getElementById('btn-filter-reviewed');
+  btn.addEventListener('click', () => {
+    btShowOnlyUnreviewed = !btShowOnlyUnreviewed;
+    btn.classList.toggle('active', btShowOnlyUnreviewed);
+    btn.textContent = btShowOnlyUnreviewed ? 'Show all' : 'Hide done';
+    applyReviewFilter();
+  });
+}
+
+function applyReviewFilter() {
+  document.querySelectorAll('#backtest-stream-list .stream-card').forEach(card => {
+    const hidden = btShowOnlyUnreviewed && card.classList.contains('reviewed');
+    card.style.display = hidden ? 'none' : '';
+  });
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────
@@ -169,6 +204,7 @@ function appendStreamCards(streams) {
     card.type = 'button';
     card.className = 'stream-card';
     card.dataset.videoId = s.videoId;
+    if (isStreamReviewed(s.videoId)) card.classList.add('reviewed');
     const parsed = s.publishedAt ? new Date(s.publishedAt) : null;
     const date   = parsed && !isNaN(parsed)
       ? parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -179,11 +215,20 @@ function appendStreamCards(streams) {
         <div class="stream-card-title">${btEscHtml(s.title)}</div>
         <div class="stream-card-date">${date}</div>
       </div>
+      <button class="stream-card-tick" title="Mark as reviewed" type="button">✓</button>
       <span class="stream-card-action">Load</span>
     `;
+    card.querySelector('.stream-card-tick').addEventListener('click', e => {
+      e.stopPropagation();
+      const nowReviewed = !isStreamReviewed(s.videoId);
+      setStreamReviewed(s.videoId, nowReviewed);
+      card.classList.toggle('reviewed', nowReviewed);
+      applyReviewFilter();
+    });
     card.addEventListener('click', () => selectStream(s));
     list.appendChild(card);
   }
+  applyReviewFilter();
 }
 
 function setupLoadMore() {
@@ -496,6 +541,12 @@ function setupJournalForm() {
 
       btShowToast('Trade saved', 'success');
       document.getElementById('journal-form').reset();
+      // Auto-mark stream as reviewed when a trade is logged
+      setStreamReviewed(btStreamId, true);
+      document.querySelectorAll(`.stream-card[data-video-id="${btStreamId}"]`).forEach(c => {
+        c.classList.add('reviewed');
+      });
+      applyReviewFilter();
       await loadJournalEntries(btChannelId, btStreamId);
       await loadChannelAnalytics(btChannelId);
     } catch (err) {

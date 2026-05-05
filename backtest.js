@@ -9,6 +9,7 @@ let btNextToken          = null;   // pagination token for past-streams
 let btStreamMeta         = null;
 let btMarkers            = [];
 let btShowOnlyUnreviewed = false;
+let btReviewedIds        = new Set(); // synced from DB per channel
 
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initBacktest);
@@ -26,20 +27,38 @@ function initBacktest() {
   setupReviewFilter();
 }
 
-// ── Reviewed streams (localStorage) ──────────────────────────────────────
-function getReviewedStreams() {
-  try { return new Set(JSON.parse(localStorage.getItem('bt_reviewed') || '[]')); }
-  catch { return new Set(); }
+// ── Reviewed streams (DB-backed) ──────────────────────────────────────────
+async function loadReviewedIds(channelId) {
+  try {
+    const res  = await fetch(`/.netlify/functions/reviewed-streams?channelId=${encodeURIComponent(channelId)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    btReviewedIds = new Set(data.videoIds || []);
+  } catch (err) {
+    console.warn('[reviewed-streams] load failed:', err.message);
+    btReviewedIds = new Set();
+  }
 }
 
-function setStreamReviewed(videoId, reviewed) {
-  const set = getReviewedStreams();
-  reviewed ? set.add(videoId) : set.delete(videoId);
-  localStorage.setItem('bt_reviewed', JSON.stringify([...set]));
+async function setStreamReviewed(videoId, reviewed) {
+  if (reviewed) {
+    btReviewedIds.add(videoId);
+    await fetch('/.netlify/functions/reviewed-streams', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ videoId, channelId: btChannelId }),
+    }).catch(() => {});
+  } else {
+    btReviewedIds.delete(videoId);
+    await fetch(
+      `/.netlify/functions/reviewed-streams?videoId=${encodeURIComponent(videoId)}&channelId=${encodeURIComponent(btChannelId)}`,
+      { method: 'DELETE' }
+    ).catch(() => {});
+  }
 }
 
 function isStreamReviewed(videoId) {
-  return getReviewedStreams().has(videoId);
+  return btReviewedIds.has(videoId);
 }
 
 function setupReviewFilter() {
@@ -109,11 +128,17 @@ function setupChannelSelect() {
   document.getElementById('backtest-channel-select').addEventListener('change', async e => {
     btChannelId = e.target.value || null;
     btNextToken = null;
+    btReviewedIds = new Set();
     clearStreamList();
     resetPlayer();
     clearJournal();
     clearAnalytics();
-    if (btChannelId) await loadPastStreams(btChannelId, null);
+    if (btChannelId) {
+      await Promise.all([
+        loadReviewedIds(btChannelId),
+        loadPastStreams(btChannelId, null),
+      ]);
+    }
   });
 }
 
@@ -218,12 +243,12 @@ function appendStreamCards(streams) {
       <button class="stream-card-tick" title="Mark as reviewed" type="button">✓</button>
       <span class="stream-card-action">Load</span>
     `;
-    card.querySelector('.stream-card-tick').addEventListener('click', e => {
+    card.querySelector('.stream-card-tick').addEventListener('click', async e => {
       e.stopPropagation();
       const nowReviewed = !isStreamReviewed(s.videoId);
-      setStreamReviewed(s.videoId, nowReviewed);
       card.classList.toggle('reviewed', nowReviewed);
       applyReviewFilter();
+      await setStreamReviewed(s.videoId, nowReviewed);
     });
     card.addEventListener('click', () => selectStream(s));
     list.appendChild(card);
@@ -542,7 +567,7 @@ function setupJournalForm() {
       btShowToast('Trade saved', 'success');
       document.getElementById('journal-form').reset();
       // Auto-mark stream as reviewed when a trade is logged
-      setStreamReviewed(btStreamId, true);
+      btReviewedIds.add(btStreamId);
       document.querySelectorAll(`.stream-card[data-video-id="${btStreamId}"]`).forEach(c => {
         c.classList.add('reviewed');
       });

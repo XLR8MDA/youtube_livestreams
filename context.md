@@ -47,6 +47,7 @@ A live trading dashboard that:
 | `netlify/functions/auto-analyze.js` | Scheduled (*/10 min) — processes `pending-analysis` queue, writes to `stream-log` |
 | `netlify/functions/extract-trade.js` | POST — receives base64 chart screenshot, calls Groq vision, returns extracted trade fields |
 | `netlify/functions/stream-log.js` | GET stream log grouped by date, filterable by days/channelId |
+| `netlify/functions/reviewed-streams.js` | GET reviewed stream IDs per channel (union of journal entries + manual ticks), POST/DELETE manual reviewed state |
 | `netlify.toml` | Function schedules and config |
 | `package.json` | Dependencies |
 
@@ -123,6 +124,13 @@ A live trading dashboard that:
 | `channel_id` | `TEXT` | |
 | `markers` | `JSONB` | Array of markers |
 | `analyzed_at` | `TIMESTAMPTZ` | |
+
+#### `reviewed_streams`
+| Column | Type | Notes |
+|---|---|---|
+| `video_id` | `TEXT` | PRIMARY KEY (composite) |
+| `channel_id` | `TEXT` | PRIMARY KEY (composite) |
+| `reviewed_at` | `TIMESTAMPTZ` | |
 
 #### `live_state`
 | Column | Type | Notes |
@@ -205,6 +213,18 @@ GET  /.netlify/functions/analyze-stream?videoId=abc123&channelId=UC...
 POST /.netlify/functions/analyze-stream
      body: { videoId, channelId }   ← forces re-analysis, ignores cache
      → { cached: false, markers: [...] }
+```
+
+### `reviewed-streams`
+```
+GET    /.netlify/functions/reviewed-streams?channelId=UC...
+       → { videoIds: [...] }   union of streams with journal entries + manually reviewed
+
+POST   /.netlify/functions/reviewed-streams
+       body: { videoId, channelId }  → { ok: true }
+
+DELETE /.netlify/functions/reviewed-streams?videoId=...&channelId=...
+       → { ok: true }
 ```
 
 ### `live-checker` (scheduled + manual)

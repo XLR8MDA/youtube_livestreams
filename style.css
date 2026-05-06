@@ -743,12 +743,6 @@ optgroup {
   line-height: 1.55;
 }
 
-.section-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
 
 .backtest-overview-card {
   display: flex;
@@ -808,28 +802,32 @@ optgroup {
 }
 
 .stream-browser-card {
-  flex: 1;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
 }
 
 .player-card {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-bottom: 14px;
 }
 
 .journal-form-card {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .journal-entries-card {
-  flex: 0.9;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .backtest-section-head {

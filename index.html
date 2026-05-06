@@ -40,56 +40,59 @@
   <section id="backtest-panel" class="hidden" aria-labelledby="tab-backtest">
     <div class="backtest-shell">
       <aside class="backtest-sidebar">
-        <div class="backtest-card backtest-card-compact">
-          <div class="backtest-card-kicker">Workspace</div>
-          <h2 class="backtest-card-title">Replay and journal past streams</h2>
-          <p class="backtest-card-copy">Load a completed stream, extract trade ideas, and keep the review process in one focused workspace.</p>
-        </div>
 
         <div class="backtest-card backtest-card-compact">
-          <div class="panel-label">Channel</div>
-          <select id="backtest-channel-select" aria-label="Backtest channel">
-            <option value="">Select a channel</option>
-          </select>
-        </div>
-
-        <div class="backtest-card backtest-card-compact">
-          <div class="panel-label">Manual URL</div>
-          <p class="manual-url-hint">Paste an individual stream URL (watch?v=...) to load without API quota.</p>
-          <div class="manual-url-row">
-            <input id="manual-url-input" type="text" class="manual-url-input" placeholder="youtube.com/watch?v=VIDEOID">
-            <button id="btn-manual-url-load" class="ghost-btn" type="button">Load</button>
+          <div class="panel-label">Source</div>
+          <div class="source-toggle">
+            <button class="source-btn active" data-source="channel" type="button">YouTube Channel</button>
+            <button class="source-btn" data-source="url" type="button">URL</button>
           </div>
-          <div id="manual-url-status" class="panel-status" style="display:none"></div>
+          <div id="source-channel" class="source-panel">
+            <select id="backtest-channel-select" aria-label="Backtest channel">
+              <option value="">Select a channel</option>
+            </select>
+          </div>
+          <div id="source-url" class="source-panel hidden">
+            <div class="manual-url-row">
+              <input id="manual-url-input" type="text" class="manual-url-input" placeholder="youtube.com/watch?v=VIDEOID">
+              <button id="btn-manual-url-load" class="ghost-btn" type="button">Load</button>
+            </div>
+            <div id="manual-url-progress" class="url-progress hidden"><div class="url-progress-bar"></div></div>
+            <div id="manual-url-status" class="panel-status" style="display:none"></div>
+          </div>
         </div>
+
+        <div class="backtest-card journal-entries-card">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">Entries</div>
+              <p id="journal-entries-subtitle">Saved trades for the selected stream.</p>
+            </div>
+          </div>
+          <div id="journal-status" class="panel-status">No stream selected.</div>
+          <div id="journal-entries" class="journal-entries"></div>
+        </div>
+
+      </aside>
+
+      <div class="backtest-main">
 
         <div class="backtest-card stream-browser-card">
           <div class="backtest-section-head">
             <div>
               <div class="panel-label">Past Streams</div>
-              <p id="streams-subtitle">Pick a channel to load completed livestreams.</p>
+              <p id="streams-subtitle">Pick a source to load completed livestreams.</p>
             </div>
             <div class="section-actions">
               <button id="btn-filter-reviewed" class="ghost-btn" type="button" title="Hide reviewed streams">Hide done</button>
               <button id="btn-load-more-streams" class="ghost-btn hidden" type="button">More</button>
             </div>
           </div>
-          <div id="stream-list-status" class="panel-status">No channel selected.</div>
-          <div id="backtest-stream-list" class="stream-list" aria-live="polite"></div>
-        </div>
-      </aside>
-
-      <div class="backtest-main">
-        <div class="backtest-card backtest-overview-card">
-          <div class="backtest-overview-copy">
-            <div class="panel-label">Backtest Flow</div>
-            <h3>Review faster with replay, markers, and screenshot-assisted journaling.</h3>
-            <p>Choose a stream from the rail, inspect the replay, then log the trade with timestamped notes and extracted chart details.</p>
-          </div>
-          <div class="backtest-overview-stats">
-            <div class="overview-pill">Replay</div>
-            <div class="overview-pill">Review</div>
-            <div class="overview-pill">Journal</div>
+          <div id="stream-list-status" class="panel-status">No source selected.</div>
+          <div class="stream-grid-wrap">
+            <button class="stream-scroll-btn" id="btn-scroll-left" type="button" aria-label="Scroll left">&#8249;</button>
+            <div id="backtest-stream-list" class="stream-grid" aria-live="polite"></div>
+            <button class="stream-scroll-btn" id="btn-scroll-right" type="button" aria-label="Scroll right">&#8250;</button>
           </div>
         </div>
 
@@ -215,16 +218,6 @@
           </form>
         </div>
 
-        <div class="backtest-card journal-entries-card">
-          <div class="backtest-section-head">
-            <div>
-              <div class="panel-label">Entries</div>
-              <p id="journal-entries-subtitle">Saved trades for the selected stream.</p>
-            </div>
-          </div>
-          <div id="journal-status" class="panel-status">No stream selected.</div>
-          <div id="journal-entries" class="journal-entries"></div>
-        </div>
       </aside>
     </div>
   </section>

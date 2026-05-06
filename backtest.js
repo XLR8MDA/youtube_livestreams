@@ -16,8 +16,10 @@ document.addEventListener('DOMContentLoaded', initBacktest);
 
 function initBacktest() {
   setupTabs();
+  setupSourceToggle();
   setupChannelSelect();
   setupLoadMore();
+  setupStreamScroll();
   setupManualUrl();
   setupRRCalc();
   setupJournalForm();
@@ -111,6 +113,19 @@ function switchTab(tab) {
   if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
 }
 
+// ── Source toggle (YouTube Channel / URL) ────────────────────────────────
+function setupSourceToggle() {
+  document.querySelectorAll('.source-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const src = btn.dataset.source;
+      document.getElementById('source-channel').classList.toggle('hidden', src !== 'channel');
+      document.getElementById('source-url').classList.toggle('hidden', src !== 'url');
+    });
+  });
+}
+
 // ── Channel selector ──────────────────────────────────────────────────────
 function populateChannelSelect() {
   const sel = document.getElementById('backtest-channel-select');
@@ -135,19 +150,18 @@ function setupChannelSelect() {
     clearJournal();
     clearAnalytics();
     if (btChannelId) {
-      await Promise.all([
-        loadReviewedIds(btChannelId),
-        loadPastStreams(btChannelId, null),
-      ]);
+      await loadReviewedIds(btChannelId);
+      await loadPastStreams(btChannelId, null);
     }
   });
 }
 
 // ── Manual URL Loader ─────────────────────────────────────────────────────
 function setupManualUrl() {
-  const input  = document.getElementById('manual-url-input');
-  const btn    = document.getElementById('btn-manual-url-load');
-  const status = document.getElementById('manual-url-status');
+  const input    = document.getElementById('manual-url-input');
+  const btn      = document.getElementById('btn-manual-url-load');
+  const status   = document.getElementById('manual-url-status');
+  const progress = document.getElementById('manual-url-progress');
 
   function tryLoad() {
     const raw = input.value.trim();
@@ -156,10 +170,13 @@ function setupManualUrl() {
     if (!videoId) {
       status.textContent = 'Could not find a video ID in that URL.';
       status.style.display = '';
+      progress.classList.add('hidden');
       return;
     }
     status.style.display = 'none';
+    progress.classList.remove('hidden');
     input.value = '';
+    setTimeout(() => progress.classList.add('hidden'), 1200);
     selectStream({ videoId, title: videoId, publishedAt: null, thumbnail: null });
   }
 
@@ -235,14 +252,18 @@ function appendStreamCards(streams) {
     const date   = parsed && !isNaN(parsed)
       ? parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
       : (s.publishedAt || '');
+    const thumbHtml = s.thumbnail
+      ? `<img class="stream-card-thumb" src="${btEscAttr(s.thumbnail)}" alt="">`
+      : `<div class="stream-card-thumb-placeholder">&#9654;</div>`;
     card.innerHTML = `
-      ${s.thumbnail ? `<img class="stream-card-thumb" src="${btEscAttr(s.thumbnail)}" alt="">` : ''}
-      <div class="stream-card-info">
+      <div class="stream-card-thumb-wrap">${thumbHtml}</div>
+      <div class="stream-card-body">
         <div class="stream-card-title">${btEscHtml(s.title)}</div>
-        <div class="stream-card-date">${date}</div>
+        <div class="stream-card-footer">
+          <span class="stream-card-date">${date}</span>
+          <button class="stream-card-tick" title="Mark as reviewed" type="button">✓</button>
+        </div>
       </div>
-      <button class="stream-card-tick" title="Mark as reviewed" type="button">✓</button>
-      <span class="stream-card-action">Load</span>
     `;
     card.querySelector('.stream-card-tick').addEventListener('click', async e => {
       e.stopPropagation();
@@ -263,6 +284,23 @@ function setupLoadMore() {
   });
 }
 
+function setupStreamScroll() {
+  const grid  = document.getElementById('backtest-stream-list');
+  const left  = document.getElementById('btn-scroll-left');
+  const right = document.getElementById('btn-scroll-right');
+  const STEP  = 340;
+
+  function updateButtons() {
+    left.disabled  = grid.scrollLeft <= 0;
+    right.disabled = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 1;
+  }
+
+  left.addEventListener('click',  () => { grid.scrollBy({ left: -STEP, behavior: 'smooth' }); });
+  right.addEventListener('click', () => { grid.scrollBy({ left:  STEP, behavior: 'smooth' }); });
+  grid.addEventListener('scroll', updateButtons);
+  updateButtons();
+}
+
 // ── Player ────────────────────────────────────────────────────────────────
 function selectStream(stream) {
   const { videoId, title } = stream;
@@ -280,7 +318,8 @@ function selectStream(stream) {
   document.getElementById('backtest-player-empty').classList.add('hidden');
   document.getElementById('backtest-player-frame').classList.remove('hidden');
   document.getElementById('journal-context').textContent = `Logging for: ${title}`;
-  document.getElementById('btn-analyze-stream').disabled = false;
+  const analyzeBtn2 = document.getElementById('btn-analyze-stream');
+  if (analyzeBtn2) analyzeBtn2.disabled = false;
   renderPlayerMeta(stream);
   resetAnalysisState();
 

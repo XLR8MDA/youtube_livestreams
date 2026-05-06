@@ -298,12 +298,7 @@ function playLesson(lesson, video) {
   });
 
   const playerShell = document.getElementById('course-player-shell');
-  const title = document.getElementById('course-player-title');
-  const notesInput = document.getElementById('course-notes-input');
-
   if (playerShell) playerShell.classList.remove('course-player-empty-state');
-  if (title) title.textContent = lesson.title;
-  if (notesInput) notesInput.value = getNote(lesson.n);
 
   updateMarkButton();
 

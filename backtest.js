@@ -93,6 +93,7 @@ function switchTab(tab) {
   const isBacktest  = tab === 'backtest';
   const isStats     = tab === 'stats';
   const isStreamLog = tab === 'stream-log';
+  const isCourse    = tab === 'course';
 
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
@@ -101,6 +102,7 @@ function switchTab(tab) {
   document.getElementById('backtest-panel')?.classList.toggle('hidden', !isBacktest);
   document.getElementById('stats-panel')?.classList.toggle('hidden', !isStats);
   document.getElementById('stream-log-panel')?.classList.toggle('hidden', !isStreamLog);
+  document.getElementById('course-panel')?.classList.toggle('hidden', !isCourse);
 
   // Hide live-only toolbar buttons when not on live tab
   ['btn-sync', 'btn-refresh'].forEach(id => {
@@ -111,6 +113,7 @@ function switchTab(tab) {
   if (isBacktest) { populateChannelSelect(); populatePairSelect(); }
   if (isStats && typeof onStatsTabActivated === 'function') onStatsTabActivated();
   if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
+  if (isCourse && typeof onCourseTabActivated === 'function') onCourseTabActivated();
 }
 
 // ── Source toggle (YouTube Channel / URL) ────────────────────────────────

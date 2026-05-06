@@ -9,6 +9,7 @@ let btNextToken          = null;   // pagination token for past-streams
 let btStreamMeta         = null;
 let btShowOnlyUnreviewed = false;
 let btReviewedIds        = new Set(); // synced from DB per channel
+let btMarkers            = [];
 
 // ── Entry point ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initBacktest);
@@ -307,7 +308,8 @@ function resetPlayer() {
   document.getElementById('backtest-player-empty').classList.remove('hidden');
   document.getElementById('backtest-player-frame').classList.add('hidden');
   document.getElementById('player-meta').innerHTML = '';
-  document.getElementById('btn-analyze-stream').disabled = true;
+  const analyzeBtn = document.getElementById('btn-analyze-stream');
+  if (analyzeBtn) analyzeBtn.disabled = true;
   resetAnalysisState(true);
   if (btPlayer) {
     try { btPlayer.destroy(); } catch {}
@@ -730,6 +732,8 @@ function setupScreenshotPaste() {
   const pasteBtn = document.getElementById('btn-paste-screenshot');
   const clearBtn = document.getElementById('btn-clear-screenshot');
 
+  if (!dropArea) return;
+
   // Drag-and-drop
   dropArea.addEventListener('dragover', e => {
     e.preventDefault();
@@ -744,7 +748,7 @@ function setupScreenshotPaste() {
   });
 
   // Paste button — remind user to press Ctrl+V
-  pasteBtn.addEventListener('click', () => {
+  if (pasteBtn) pasteBtn.addEventListener('click', () => {
     btShowToast('Press Ctrl+V anywhere to paste your screenshot', 'info');
   });
 

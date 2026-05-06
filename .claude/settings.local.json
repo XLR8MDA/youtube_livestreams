@@ -37,7 +37,10 @@
       "Bash(taskkill:*)",
       "WebFetch(domain:www.youtube.com)",
       "Bash(yt-dlp --version)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(xargs -r taskkill //F //PID)"
     ]
   }
 }

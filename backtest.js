@@ -14,6 +14,7 @@ let btReviewedIds        = new Set(); // synced from DB per channel
 document.addEventListener('DOMContentLoaded', initBacktest);
 
 function initBacktest() {
+  setupTabs();
   setupChannelSelect();
   setupLoadMore();
   setupManualUrl();
@@ -76,6 +77,38 @@ function applyReviewFilter() {
   });
 }
 
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+}
+
+function switchTab(tab) {
+  const isLive      = tab === 'live';
+  const isBacktest  = tab === 'backtest';
+  const isStats     = tab === 'stats';
+  const isStreamLog = tab === 'stream-log';
+
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
+  document.getElementById('grid-container')?.classList.toggle('hidden', !isLive);
+  document.getElementById('backtest-panel')?.classList.toggle('hidden', !isBacktest);
+  document.getElementById('stats-panel')?.classList.toggle('hidden', !isStats);
+  document.getElementById('stream-log-panel')?.classList.toggle('hidden', !isStreamLog);
+
+  // Hide live-only toolbar buttons when not on live tab
+  ['btn-sync', 'btn-refresh'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLive ? '' : 'none';
+  });
+
+  if (isBacktest) { populateChannelSelect(); populatePairSelect(); }
+  if (isStats && typeof onStatsTabActivated === 'function') onStatsTabActivated();
+  if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
+}
 
 // ── Channel selector ──────────────────────────────────────────────────────
 function populateChannelSelect() {
@@ -172,6 +205,7 @@ async function loadPastStreams(channelId, pageToken) {
     try { data = JSON.parse(text); } catch { throw new Error(`Function error (HTTP ${res.status}): ${text.slice(0, 200)}`); }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
+    if (!data.cached) window.trackQuotaUnits?.(100);
     const { streams, nextPageToken } = data;
     btNextToken = nextPageToken || null;
 
@@ -310,6 +344,13 @@ async function analyzeStream(videoId, channelId) {
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    // Whisper STT fallback — YouTube captions unavailable, queued for background processing
+    if (data.pendingWhisper) {
+      status.textContent = 'YouTube captions unavailable — queued for Whisper transcription. Check back in 5–10 minutes.';
+      btShowToast('Whisper transcription queued — auto-analysis will complete shortly', 'info');
+      return;
+    }
 
     const markers = Array.isArray(data.markers) ? data.markers : [];
     btMarkers = markers;
@@ -686,8 +727,8 @@ function renderAnalyticsTable(rows) {
 // ── Screenshot auto-fill ─────────────────────────────────────────────────
 function setupScreenshotPaste() {
   const dropArea = document.getElementById('screenshot-drop-area');
+  const pasteBtn = document.getElementById('btn-paste-screenshot');
   const clearBtn = document.getElementById('btn-clear-screenshot');
-  if (!dropArea || !clearBtn) return;
 
   // Drag-and-drop
   dropArea.addEventListener('dragover', e => {
@@ -702,16 +743,18 @@ function setupScreenshotPaste() {
     if (file && file.type.startsWith('image/')) processScreenshot(file);
   });
 
+  // Paste button — remind user to press Ctrl+V
+  pasteBtn.addEventListener('click', () => {
+    btShowToast('Press Ctrl+V anywhere to paste your screenshot', 'info');
+  });
+
   // Upload button — opens file picker (works on mobile)
   const fileInput = document.getElementById('screenshot-file-input');
-  const uploadBtn = document.getElementById('btn-upload-screenshot');
-  if (uploadBtn && fileInput) {
-    uploadBtn.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files[0];
-      if (file) { processScreenshot(file); fileInput.value = ''; }
-    });
-  }
+  document.getElementById('btn-upload-screenshot').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) { processScreenshot(file); fileInput.value = ''; }
+  });
 
   // Global paste listener
   document.addEventListener('paste', e => {

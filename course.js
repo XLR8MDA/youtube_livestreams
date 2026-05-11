@@ -1,47 +1,9 @@
 'use strict';
 
-// Hardcoded video IDs — no API calls needed
-const COURSE_VIDEOS = {
-  smc: [
-    { videoId: '1cCUunzQ-V4', title: 'What is Smart Money Concept? (SMC Explained) | Part 1' }, // 0
-    { videoId: 'Th6YxswUOh4', title: 'Market Structure Mastery (BOS & CHoCH Explained) Part 2' }, // 1
-    { videoId: 'sTKIlbeKPpg', title: 'Advanced Liquidity & Manipulation: The Smart Money Play (Stop Hunts & Liquidity Pools) Part 3' }, // 2
-    { videoId: 'hGTuhomD0B4', title: 'Advanced FVGs (Consecutive & Overlapping Imbalances) Part 4' }, // 3
-    { videoId: 'J9cvlJk4w8U', title: 'ICT OTE Strategy – Trade Like Smart Money | Part 5' }, // 4
-    { videoId: '3DxYFR-MD0w', title: 'Inducement: The Trap Before the Big Move (Explained) Part 6' }, // 5
-    { videoId: 'TX0nhBMrT4U', title: 'Top Down Analysis SMC Strategy | Best Price Action Method (Step by Step) Part 7' }, // 6
-    { videoId: 'mLU_C4NG4Gw', title: 'Momentum Sniper Strategy (MSM) – My Personal Forex Edge Revealed | Part 8' }, // 7
-    { videoId: 'ZErwnATeeuU', title: 'How to Mark POI Levels Like Smart Money (SMC) Part 9' }, // 8
-    { videoId: 't4TYgi-XxKM', title: 'SMC Order Flow Explained – How Smart Money Really Trades (Part 10)' }, // 9
-  ],
-  bootcamp: [
-    { videoId: 'k9li2a0qn5I', title: 'Master Price Action - Bootcamp Ep.1' }, // 0
-    { videoId: 'YxMMov8roBQ', title: 'Market Structure: The Skill That Separates Winners - Bootcamp Ep.2' }, // 1
-    { videoId: 'vCh4so18bDg', title: 'Supply & Demand - Bootcamp Ep.3' }, // 2
-    { videoId: 'D6svZ1whG7U', title: 'Imbalance - Bootcamp Ep.4' }, // 3
-    { videoId: 'YYW3yPfyHpg', title: 'Efficient Ranges - Bootcamp Ep.5' }, // 4
-    { videoId: '-UIrmQ3y0nI', title: 'Equal High & Equal Low Liquidity - Bootcamp Ep.6' }, // 5
-    { videoId: 'qErVtn3NBbQ', title: 'Trend Liquidity - Bootcamp Ep.7' }, // 6
-    { videoId: '4YQnt5FEP4g', title: 'How to read Candle Momentum - Bootcamp Ep.8' }, // 7
-    { videoId: '2iVkF_FVCXA', title: 'Reading markets with \'Multi-Candle\' Momentum - Bootcamp Ep.9' }, // 8
-    { videoId: 'mFmEkEEKJQE', title: 'What timeframes should you trade? - Bootcamp 10' }, // 9
-    { videoId: 'xIbYGU318j0', title: 'How to Day Trade London & NY Session - Bootcamp Ep.11' }, // 10
-    { videoId: 'ewZVjxk0SlY', title: 'Markets Tell a Story... Here\'s How You Read It - Bootcamp Ep.12' }, // 11
-  ],
-  zip3: [
-    { videoId: 'ygleB1CLhUE', title: 'Master Market Structure in 68 Minutes (Step-by-Step Course)' }, // 0
-    { videoId: '0kl47rZZ4SQ', title: 'The Stop Loss Strategy That Can 10X Your Profits' }, // 1
-    { videoId: '4Ymh5Rvm0C8', title: 'This entry model will change how you trade… (10x results)' }, // 2
-    { videoId: 'IHH_eKHt9uo', title: 'How to trade REVERSALS - Full Course' }, // 3
-    { videoId: 'RvO3iQjXui0', title: 'How to trade continuations - Full Course' }, // 4
-    { videoId: 'JhBX0TQ41H8', title: 'Liquidity + Structure = Profit' }, // 5
-    { videoId: 'Z4Y301e_udQ', title: 'How to Trade Reversals' }, // 6
-    { videoId: 'jWKT-P9pPdc', title: 'Complete Guide to Market Structure (Mastery)' }, // 7
-    { videoId: 'LclxDYccla8', title: 'The ONLY Market Structure Lesson You\'ll EVER Need (Step by Step)' }, // 8
-    { videoId: 'BNVGhjxP4JY', title: 'Market Structure Masterclass' }, // 9
-    { videoId: 'LSs9femocqc', title: 'How To Trade Market Structure On Any Timeframe | (Structure Layers) - JeaFx' }, // 10
-    { videoId: '8QZ1AnUQHho', title: 'Different Types of Structure | Which One Should You Use? - JeaFx' }, // 11
-  ],
+const PLAYLIST_IDS = {
+  smc:      'PLyobF5Rf4liTQrcKtSmbwaCtX71lUP-n_',
+  bootcamp: 'PLguWwLNVYKWfGzKcW358QivkQceAtW5B-',
+  zip3:     'PLguWwLNVYKWeGlaKrhB3Tp9MfMmj7BlQg',
 };
 
 const COURSE_STORAGE_KEY = 'course_completed';
@@ -155,8 +117,21 @@ function onCourseTabActivated() {
 async function loadCourse() {
   setCourseStatus('loading');
   try {
-    // Hardcoded course data is used instead of API calls
-    coursePlaylists = COURSE_VIDEOS;
+    const keys = Object.keys(PLAYLIST_IDS);
+    const promises = keys.map(key =>
+      fetch(`/.netlify/functions/course-playlist?playlistId=${PLAYLIST_IDS[key]}`)
+        .then(async res => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          return { key, items: data.items || [] };
+        })
+    );
+
+    const results = await Promise.all(promises);
+    for (const res of results) {
+      coursePlaylists[res.key] = res.items;
+    }
+
     courseLoaded = true;
     setCourseStatus('ready');
     renderSidebar();

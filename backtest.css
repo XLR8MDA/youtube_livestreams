@@ -951,6 +951,221 @@
   border-color: var(--accent);
 }
 
+/* ── MSM Setup Details ───────────────────────────────────────────────────── */
+.msm-details {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.msm-details summary {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msm-details summary::before {
+  content: '▶';
+  font-size: 8px;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+
+.msm-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.msm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.msm-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.msm-grid label span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.msm-grid select {
+  background: var(--surface2);
+  border: 1.5px solid var(--border-strong);
+  color: var(--text);
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  font-family: inherit;
+}
+
+.msm-grid select:focus {
+  border-color: var(--accent-dim);
+}
+
+.msm-checks {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.check-label,
+.check-label-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.check-label input[type="checkbox"],
+.check-label-inline input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── MSM Review Row (rating + followed rules) ────────────────────────────── */
+.msm-review-grid {
+  align-items: center;
+}
+
+.msm-review-grid label:last-child {
+  grid-column: auto;
+}
+
+/* ── TradingView URL field ───────────────────────────────────────────────── */
+.notes-field input[type="url"] {
+  background: var(--surface2);
+  border: 1.5px solid var(--border-strong);
+  color: var(--text);
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+  font-family: 'IBM Plex Mono', monospace;
+  box-sizing: border-box;
+}
+
+.notes-field input[type="url"]:focus {
+  border-color: var(--accent-dim);
+}
+
+/* ── Journal Entry: MSM tags ─────────────────────────────────────────────── */
+.je-msm-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.je-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.06);
+  color: var(--text-dim);
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+}
+
+.je-tag.je-session {
+  background: rgba(92,142,0,0.10);
+  color: var(--accent);
+  border: 1px solid rgba(92,142,0,0.20);
+}
+
+.je-tag.je-check {
+  background: rgba(0,122,96,0.08);
+  color: var(--accent-2, #007a60);
+}
+
+.je-tag.je-quality-strong { background: rgba(92,142,0,0.12);  color: var(--accent); }
+.je-tag.je-quality-medium { background: rgba(200,150,0,0.12); color: #b87c00; }
+.je-tag.je-quality-weak   { background: rgba(200,60,60,0.10); color: var(--live-red); }
+
+/* ── Journal Entry: planned RR + rating ─────────────────────────────────── */
+.je-rr-planned {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.04);
+  border: 1px dashed var(--border-strong);
+}
+
+.je-rating {
+  font-size: 10px;
+  color: #c9930a;
+  letter-spacing: 1px;
+}
+
+/* ── TradingView snapshot / link in journal entry ────────────────────────── */
+.je-tv-thumb {
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.je-tv-thumb img {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  display: block;
+  transition: opacity 0.15s;
+}
+
+.je-tv-thumb:hover img {
+  opacity: 0.85;
+}
+
+.je-tv-link {
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-top: 2px;
+  display: inline-block;
+}
+
+.je-tv-link:hover {
+  text-decoration: underline;
+}
+
 /* ── Backtest Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .backtest-shell {

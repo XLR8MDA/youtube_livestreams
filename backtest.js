@@ -151,7 +151,6 @@ function setupChannelSelect() {
     clearStreamList();
     resetPlayer();
     clearJournal();
-    clearAnalytics();
     if (btChannelId) {
       await loadReviewedIds(btChannelId);
       await loadPastStreams(btChannelId, null);
@@ -324,7 +323,7 @@ function selectStream(stream) {
   const analyzeBtn2 = document.getElementById('btn-analyze-stream');
   if (analyzeBtn2) analyzeBtn2.disabled = false;
   renderPlayerMeta(stream);
-  resetAnalysisState();
+  resetAnalysisState(true);
 
   if (btPlayer) {
     btPlayer.loadVideoById(videoId);
@@ -337,7 +336,6 @@ function selectStream(stream) {
 
   if (btChannelId) {
     loadJournalEntries(btChannelId, videoId);
-    loadChannelAnalytics(btChannelId);
   }
 }
 
@@ -587,15 +585,29 @@ function setupJournalForm() {
     if (manualTs !== '') videoTimestamp = parseInt(manualTs, 10);
 
     const entry = {
-      pair:           document.getElementById('trade-pair').value.trim() || null,
-      direction:      document.getElementById('trade-direction').value,
-      result:         document.getElementById('trade-result').value,
-      entry:          parseFloat(document.getElementById('trade-entry').value) || null,
-      exit:           parseFloat(document.getElementById('trade-exit').value)  || null,
-      stop:           parseFloat(document.getElementById('trade-stop').value)  || null,
-      rr:             parseFloat(document.getElementById('trade-rr').value)    || null,
-      notes:          document.getElementById('trade-notes').value.trim(),
+      pair:               document.getElementById('trade-pair').value.trim() || null,
+      direction:          document.getElementById('trade-direction').value,
+      result:             document.getElementById('trade-result').value,
+      entry:              parseFloat(document.getElementById('trade-entry').value)      || null,
+      exit:               parseFloat(document.getElementById('trade-exit').value)       || null,
+      stop:               parseFloat(document.getElementById('trade-stop').value)       || null,
+      rr:                 parseFloat(document.getElementById('trade-rr').value)         || null,
+      notes:              document.getElementById('trade-notes').value.trim(),
       videoTimestamp,
+      session:            document.getElementById('trade-session').value             || null,
+      timeframe:          document.getElementById('trade-timeframe').value           || null,
+      htfPoi:             document.getElementById('trade-htf-poi').value             || null,
+      entryModel:         document.getElementById('trade-entry-model').value         || null,
+      pullbackDepth:      document.getElementById('trade-pullback-depth').value      || null,
+      confirmationCandle: document.getElementById('trade-confirmation-candle').value || null,
+      candleQuality:      document.getElementById('trade-candle-quality').value      || null,
+      chochConfirmed:     document.getElementById('trade-choch').checked,
+      liquiditySwept:     document.getElementById('trade-liq-swept').checked,
+      rrPlanned:          parseFloat(document.getElementById('trade-rr-planned').value) || null,
+      riskPercent:        parseFloat(document.getElementById('trade-risk').value)        || null,
+      rating:             parseInt(document.getElementById('trade-rating').value)        || null,
+      followedRules:      document.getElementById('trade-followed-rules').checked,
+      tradingviewUrl:     document.getElementById('trade-tv-url').value.trim()       || null,
     };
 
     try {
@@ -622,7 +634,6 @@ function setupJournalForm() {
       });
       applyReviewFilter();
       await loadJournalEntries(btChannelId, btStreamId);
-      await loadChannelAnalytics(btChannelId);
     } catch (err) {
       btShowToast(`Save failed: ${err.message}`, 'error');
     } finally {
@@ -671,16 +682,40 @@ function renderJournalEntries(entries, channelId, streamId) {
     const el  = document.createElement('div');
     el.className  = `journal-entry result-${e.result}`;
     const ts  = e.videoTimestamp != null ? ` @${fmtTime(e.videoTimestamp)}` : '';
+    const sessionLabel   = e.session   ? e.session.charAt(0).toUpperCase() + e.session.slice(1) : null;
+    const ratingStars    = e.rating    ? '&#9733;'.repeat(e.rating) + '&#9734;'.repeat(5 - e.rating) : null;
+    const isTVSnapshot   = e.tradingviewUrl && /tradingview\.com\/x\/[a-zA-Z0-9]+/.test(e.tradingviewUrl);
+    const tvLink         = e.tradingviewUrl
+      ? (isTVSnapshot
+          ? `<a class="je-tv-thumb" href="${btEscHtml(e.tradingviewUrl)}" target="_blank" rel="noopener"><img src="${btEscHtml(e.tradingviewUrl)}" alt="Chart" loading="lazy"></a>`
+          : `<a class="je-tv-link" href="${btEscHtml(e.tradingviewUrl)}" target="_blank" rel="noopener">View Chart &#8599;</a>`)
+      : '';
+
+    const msmTags = [
+      e.session        ? `<span class="je-tag je-session">${btEscHtml(sessionLabel)}</span>` : '',
+      e.timeframe      ? `<span class="je-tag">${btEscHtml(e.timeframe)}</span>` : '',
+      e.htfPoi         ? `<span class="je-tag">${btEscHtml(e.htfPoi)}</span>` : '',
+      e.entryModel     ? `<span class="je-tag">${btEscHtml(e.entryModel)}</span>` : '',
+      e.candleQuality  ? `<span class="je-tag je-quality-${e.candleQuality}">${btEscHtml(e.candleQuality)}</span>` : '',
+      e.chochConfirmed ? `<span class="je-tag je-check">CHOCH &#10003;</span>` : '',
+      e.liquiditySwept ? `<span class="je-tag je-check">Liq &#10003;</span>` : '',
+      e.followedRules  ? `<span class="je-tag je-check">Rules &#10003;</span>` : '',
+    ].filter(Boolean).join('');
+
     el.innerHTML = `
       <div class="je-header">
         ${e.pair ? `<span class="je-pair">${btEscHtml(e.pair)}</span>` : ''}
         <span class="je-direction ${e.direction}">${e.direction.toUpperCase()}</span>
         <span class="je-result ${e.result}">${e.result.toUpperCase()}</span>
-        ${e.rr   ? `<span class="je-rr">${e.rr}R</span>` : ''}
-        ${ts     ? `<span class="je-ts">${btEscHtml(ts)}</span>` : ''}
+        ${e.rr       ? `<span class="je-rr">${e.rr}R</span>` : ''}
+        ${e.rrPlanned ? `<span class="je-rr-planned" title="Planned RR">${e.rrPlanned}R plan</span>` : ''}
+        ${ratingStars ? `<span class="je-rating" title="Rating">${ratingStars}</span>` : ''}
+        ${ts         ? `<span class="je-ts">${btEscHtml(ts)}</span>` : ''}
         <button class="je-delete" title="Delete">&times;</button>
       </div>
+      ${msmTags ? `<div class="je-msm-tags">${msmTags}</div>` : ''}
       ${e.notes ? `<div class="je-notes">${btEscHtml(e.notes)}</div>` : ''}
+      ${tvLink}
     `;
     el.querySelector('.je-delete').addEventListener('click', () =>
       deleteJournalEntry(channelId, streamId, e.id)
@@ -698,80 +733,14 @@ async function deleteJournalEntry(channelId, streamId, entryId) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     btShowToast('Entry deleted', 'info');
     await loadJournalEntries(channelId, streamId);
-    await loadChannelAnalytics(channelId);
   } catch (err) {
     btShowToast(`Delete failed: ${err.message}`, 'error');
   }
 }
 
-// ── Analytics ─────────────────────────────────────────────────────────────
-function clearAnalytics() {
-  const empty = document.getElementById('analytics-empty');
-  const wrap = document.getElementById('analytics-table-wrap');
-  if (!empty || !wrap) return;
-  empty.style.display = '';
-  empty.textContent = 'No trade data yet.';
-  wrap.classList.add('hidden');
-}
-
-async function loadChannelAnalytics(channelId) {
-  if (!btStreamId) return;
-
-  try {
-    const res     = await fetch(`/.netlify/functions/journal?channelId=${encodeURIComponent(channelId)}&streamId=${encodeURIComponent(btStreamId)}`);
-    const entries = await res.json();
-    if (!res.ok || !entries.length) { clearAnalytics(); return; }
-
-    const stats = computeStats(entries, btStreamTitle || btStreamId);
-    renderAnalyticsTable([stats]);
-  } catch {
-    clearAnalytics();
-  }
-}
-
-function computeStats(entries, label) {
-  const wins   = entries.filter(e => e.result === 'win').length;
-  const losses = entries.filter(e => e.result === 'loss').length;
-  const be     = entries.filter(e => e.result === 'be').length;
-  const total  = entries.length;
-  const rrVals = entries.map(e => e.rr).filter(v => v != null && !isNaN(v));
-  const avgRR  = rrVals.length ? (rrVals.reduce((a, b) => a + b, 0) / rrVals.length).toFixed(2) : '—';
-  return {
-    label,
-    total,
-    winRate: total ? `${Math.round((wins / total) * 100)}%` : '—',
-    avgRR,
-    wins,
-    losses,
-    be,
-  };
-}
-
-function renderAnalyticsTable(rows) {
-  const empty = document.getElementById('analytics-empty');
-  const wrap  = document.getElementById('analytics-table-wrap');
-  const tbody = document.querySelector('#analytics-table tbody');
-  if (!empty || !wrap || !tbody) return;
-
-  empty.style.display = 'none';
-  wrap.classList.remove('hidden');
-  tbody.innerHTML = rows.map(r => `
-    <tr>
-      <td title="${btEscAttr(r.label)}">${btEscHtml(truncate(r.label, 28))}</td>
-      <td>${r.total}</td>
-      <td>${r.winRate}</td>
-      <td>${r.avgRR}</td>
-      <td style="color:var(--accent)">${r.wins}</td>
-      <td style="color:var(--live-red)">${r.losses}</td>
-      <td style="color:#6080ff">${r.be}</td>
-    </tr>
-  `).join('');
-}
-
 // ── Screenshot auto-fill ─────────────────────────────────────────────────
 function setupScreenshotPaste() {
   const dropArea = document.getElementById('screenshot-drop-area');
-  const pasteBtn = document.getElementById('btn-paste-screenshot');
   const clearBtn = document.getElementById('btn-clear-screenshot');
 
   if (!dropArea) return;
@@ -787,11 +756,6 @@ function setupScreenshotPaste() {
     dropArea.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('image/')) processScreenshot(file);
-  });
-
-  // Paste button — remind user to press Ctrl+V
-  if (pasteBtn) pasteBtn.addEventListener('click', () => {
-    btShowToast('Press Ctrl+V anywhere to paste your screenshot', 'info');
   });
 
   // Upload button — opens file picker (works on mobile)
@@ -859,11 +823,14 @@ async function processScreenshot(file) {
     fillFormFromExtraction(data, existingPairs);
     status.textContent = 'Details extracted — review and tweak before saving.';
     status.className   = 'screenshot-status success';
+
+
   } catch (err) {
     status.textContent = `Extraction failed: ${err.message}`;
     status.className   = 'screenshot-status error';
   }
 }
+
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {

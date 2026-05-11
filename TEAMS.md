@@ -14,11 +14,11 @@
 
 | # | Task                                                       | Status  |
 | - | ---------------------------------------------------------- | ------- |
-| 1 | Remove broken Analytics card from Backtest tab             | pending |
-| 2 | Fix analysis panel pre-showing on stream select            | pending |
-| 3 | Remove useless Paste (Ctrl+V) button from screenshot zone  | pending |
-| 5 | Build Course tab — playlist viewer with progress tracking | pending |
-| 6 | Save trade screenshots to Google Drive                     | pending |
+| 1 | Remove broken Analytics card from Backtest tab             | completed |
+| 2 | Fix analysis panel pre-showing on stream select            | completed |
+| 3 | Remove useless Paste (Ctrl+V) button from screenshot zone  | completed |
+| 5 | Build Course tab — playlist viewer with progress tracking | completed |
+| 6 | Save trade screenshots to Google Drive                     | completed |
 
 ---
 
@@ -109,6 +109,14 @@ Auto-save chart screenshots from the trade journal to user's Google Drive after 
 ---
 
 ## Session Log
+
+**2026-05-11 (Gemini CLI)**
+
+- **Codex Handover:** Completed all pending Codex tasks.
+- **Cleanup (#1, #3):** Removed broken single-stream analytics and redundant Paste button from Backtest tab.
+- **Analysis UI Fix (#2):** Prevented analysis panel from pre-showing when selecting a stream.
+- **Course Tab (#5):** Finished course tab implementation with dynamic playlist fetching (via `course-playlist` function) and progress tracking (localStorage). Added lesson notes section.
+- **Drive Integration (#6):** Added "Connect Google Drive" UI to settings and implemented automatic screenshot archival to Drive in `backtest.js`.
 
 **2026-05-05 (Claude)**
 

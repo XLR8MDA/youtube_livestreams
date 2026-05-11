@@ -32,6 +32,21 @@ async function getDb() {
     )
   `;
   await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS image_url TEXT`;
+  // MSM fields
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS session TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS timeframe TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS htf_poi TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS choch_confirmed BOOLEAN`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS liquidity_swept BOOLEAN`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS entry_model TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS pullback_depth TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS confirmation_candle TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS candle_quality TEXT`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS rr_planned DOUBLE PRECISION`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS risk_percent DOUBLE PRECISION`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS rating INTEGER`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS followed_rules BOOLEAN`;
+  await sql`ALTER TABLE journal_entries ADD COLUMN IF NOT EXISTS tradingview_url TEXT`;
   return sql;
 }
 
@@ -51,7 +66,22 @@ function mapToFrontend(row) {
     notes: row.notes,
     imageUrl: row.image_url,
     videoTimestamp: row.video_timestamp,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    // MSM fields
+    session: row.session,
+    timeframe: row.timeframe,
+    htfPoi: row.htf_poi,
+    chochConfirmed: row.choch_confirmed,
+    liquiditySwept: row.liquidity_swept,
+    entryModel: row.entry_model,
+    pullbackDepth: row.pullback_depth,
+    confirmationCandle: row.confirmation_candle,
+    candleQuality: row.candle_quality,
+    rrPlanned: row.rr_planned,
+    riskPercent: row.risk_percent,
+    rating: row.rating,
+    followedRules: row.followed_rules,
+    tradingviewUrl: row.tradingview_url,
   };
 }
 
@@ -94,7 +124,10 @@ exports.handler = async (event) => {
       await sql`
         INSERT INTO journal_entries (
           id, channel_id, stream_id, stream_title, pair, direction, result,
-          entry_price, exit_price, stop_price, rr, notes, image_url, video_timestamp, created_at
+          entry_price, exit_price, stop_price, rr, notes, image_url, video_timestamp, created_at,
+          session, timeframe, htf_poi, choch_confirmed, liquidity_swept,
+          entry_model, pullback_depth, confirmation_candle, candle_quality,
+          rr_planned, risk_percent, rating, followed_rules, tradingview_url
         ) VALUES (
           ${id},
           ${channelId},
@@ -110,7 +143,21 @@ exports.handler = async (event) => {
           ${entry.notes || null},
           ${entry.imageUrl || null},
           ${entry.videoTimestamp || null},
-          ${createdAt}
+          ${createdAt},
+          ${entry.session || null},
+          ${entry.timeframe || null},
+          ${entry.htfPoi || null},
+          ${entry.chochConfirmed ?? null},
+          ${entry.liquiditySwept ?? null},
+          ${entry.entryModel || null},
+          ${entry.pullbackDepth || null},
+          ${entry.confirmationCandle || null},
+          ${entry.candleQuality || null},
+          ${entry.rrPlanned || null},
+          ${entry.riskPercent || null},
+          ${entry.rating || null},
+          ${entry.followedRules ?? null},
+          ${entry.tradingviewUrl || null}
         )
       `;
       
@@ -136,7 +183,21 @@ exports.handler = async (event) => {
         rr: updates.rr,
         notes: updates.notes,
         image_url: updates.imageUrl,
-        video_timestamp: updates.videoTimestamp
+        video_timestamp: updates.videoTimestamp,
+        session: updates.session,
+        timeframe: updates.timeframe,
+        htf_poi: updates.htfPoi,
+        choch_confirmed: updates.chochConfirmed,
+        liquidity_swept: updates.liquiditySwept,
+        entry_model: updates.entryModel,
+        pullback_depth: updates.pullbackDepth,
+        confirmation_candle: updates.confirmationCandle,
+        candle_quality: updates.candleQuality,
+        rr_planned: updates.rrPlanned,
+        risk_percent: updates.riskPercent,
+        rating: updates.rating,
+        followed_rules: updates.followedRules,
+        tradingview_url: updates.tradingviewUrl,
       };
 
       // Filter out undefined
@@ -160,6 +221,20 @@ exports.handler = async (event) => {
       if (fieldsToUpdate.hasOwnProperty('notes')) await sql`UPDATE journal_entries SET notes = ${fieldsToUpdate.notes} WHERE id = ${entryId}`;
       if (fieldsToUpdate.hasOwnProperty('image_url')) await sql`UPDATE journal_entries SET image_url = ${fieldsToUpdate.image_url} WHERE id = ${entryId}`;
       if (fieldsToUpdate.hasOwnProperty('video_timestamp')) await sql`UPDATE journal_entries SET video_timestamp = ${fieldsToUpdate.video_timestamp} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('session')) await sql`UPDATE journal_entries SET session = ${fieldsToUpdate.session} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('timeframe')) await sql`UPDATE journal_entries SET timeframe = ${fieldsToUpdate.timeframe} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('htf_poi')) await sql`UPDATE journal_entries SET htf_poi = ${fieldsToUpdate.htf_poi} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('choch_confirmed')) await sql`UPDATE journal_entries SET choch_confirmed = ${fieldsToUpdate.choch_confirmed} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('liquidity_swept')) await sql`UPDATE journal_entries SET liquidity_swept = ${fieldsToUpdate.liquidity_swept} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('entry_model')) await sql`UPDATE journal_entries SET entry_model = ${fieldsToUpdate.entry_model} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('pullback_depth')) await sql`UPDATE journal_entries SET pullback_depth = ${fieldsToUpdate.pullback_depth} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('confirmation_candle')) await sql`UPDATE journal_entries SET confirmation_candle = ${fieldsToUpdate.confirmation_candle} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('candle_quality')) await sql`UPDATE journal_entries SET candle_quality = ${fieldsToUpdate.candle_quality} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('rr_planned')) await sql`UPDATE journal_entries SET rr_planned = ${fieldsToUpdate.rr_planned} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('risk_percent')) await sql`UPDATE journal_entries SET risk_percent = ${fieldsToUpdate.risk_percent} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('rating')) await sql`UPDATE journal_entries SET rating = ${fieldsToUpdate.rating} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('followed_rules')) await sql`UPDATE journal_entries SET followed_rules = ${fieldsToUpdate.followed_rules} WHERE id = ${entryId}`;
+      if (fieldsToUpdate.hasOwnProperty('tradingview_url')) await sql`UPDATE journal_entries SET tradingview_url = ${fieldsToUpdate.tradingview_url} WHERE id = ${entryId}`;
 
       return respond(200, { ok: true });
     }

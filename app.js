@@ -1062,6 +1062,7 @@ function switchTab(tab) {
   const isBacktest = tab === 'backtest';
   const isStats    = tab === 'stats';
   const isCourse   = tab === 'course';
+  const isLife     = tab === 'life';
 
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
@@ -1070,6 +1071,7 @@ function switchTab(tab) {
   document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
   document.getElementById('stats-panel').classList.toggle('hidden', !isStats);
   document.getElementById('course-panel').classList.toggle('hidden', !isCourse);
+  document.getElementById('life-panel').classList.toggle('hidden', !isLife);
 
   ['btn-sync', 'btn-refresh'].forEach(id => {
     const el = document.getElementById(id);
@@ -1082,4 +1084,5 @@ function switchTab(tab) {
   }
   if (isStats  && typeof onStatsTabActivated  === 'function') onStatsTabActivated();
   if (isCourse && typeof onCourseTabActivated === 'function') onCourseTabActivated();
+  if (isLife   && typeof onLifeTabActivated   === 'function') onLifeTabActivated();
 }

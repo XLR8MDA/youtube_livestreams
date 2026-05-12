@@ -94,6 +94,7 @@ function switchTab(tab) {
   const isStats     = tab === 'stats';
   const isStreamLog = tab === 'stream-log';
   const isCourse    = tab === 'course';
+  const isLife      = tab === 'life';
 
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab)
@@ -103,6 +104,7 @@ function switchTab(tab) {
   document.getElementById('stats-panel')?.classList.toggle('hidden', !isStats);
   document.getElementById('stream-log-panel')?.classList.toggle('hidden', !isStreamLog);
   document.getElementById('course-panel')?.classList.toggle('hidden', !isCourse);
+  document.getElementById('life-panel')?.classList.toggle('hidden', !isLife);
 
   // Hide live-only toolbar buttons when not on live tab
   ['btn-sync', 'btn-refresh'].forEach(id => {
@@ -111,9 +113,10 @@ function switchTab(tab) {
   });
 
   if (isBacktest) { populateChannelSelect(); populatePairSelect(); }
-  if (isStats && typeof onStatsTabActivated === 'function') onStatsTabActivated();
+  if (isStats     && typeof onStatsTabActivated     === 'function') onStatsTabActivated();
   if (isStreamLog && typeof onStreamLogTabActivated === 'function') onStreamLogTabActivated();
-  if (isCourse && typeof onCourseTabActivated === 'function') onCourseTabActivated();
+  if (isCourse    && typeof onCourseTabActivated    === 'function') onCourseTabActivated();
+  if (isLife      && typeof onLifeTabActivated      === 'function') onLifeTabActivated();
 }
 
 // ── Source toggle (YouTube Channel / URL) ────────────────────────────────

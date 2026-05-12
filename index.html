@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="backtest.css">
   <link rel="stylesheet" href="stats.css">
   <link rel="stylesheet" href="course.css">
+  <link rel="stylesheet" href="life.css">
 </head>
 <body>
 
@@ -23,6 +24,7 @@
       <button id="tab-backtest" class="tab-btn" data-tab="backtest" type="button">Backtest</button>
       <button id="tab-stats" class="tab-btn" data-tab="stats" type="button">Stats</button>
       <button id="tab-course" class="tab-btn" data-tab="course" type="button">Course</button>
+      <button id="tab-life" class="tab-btn" data-tab="life" type="button">Life</button>
     </nav>
 
     <div id="toolbar-right">
@@ -552,9 +554,59 @@
   <div id="toast-container" aria-live="polite"></div>
 
   <script src="config.js"></script>
+  <!-- ── Life Tab Panel ───────────────────────────────────────────────── -->
+  <section id="life-panel" class="hidden" aria-labelledby="tab-life">
+    <header class="life-cal-header">
+      <button id="btn-life-prev" class="life-nav-btn" type="button">&#8592;</button>
+      <span id="life-month-label"></span>
+      <button id="btn-life-next" class="life-nav-btn" type="button">&#8594;</button>
+      <button id="btn-life-today" class="life-today-btn hidden" type="button">Today</button>
+      <button id="btn-life-alarm" class="life-alarm-btn" type="button" title="Alarm on">&#128276;</button>
+    </header>
+    <div class="life-cal-weekdays">
+      <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+    </div>
+    <div id="life-cal-grid" class="life-cal-grid"></div>
+  </section>
+
+  <!-- ── Day Detail Overlay ────────────────────────────────────────────── -->
+  <div id="life-day-overlay" class="life-day-overlay hidden">
+    <div class="life-day-panel">
+      <div class="life-day-panel-header">
+        <span id="life-day-label"></span>
+        <button id="btn-life-day-close" type="button">&#10005;</button>
+      </div>
+      <div id="life-day-hours" class="life-day-hours"></div>
+    </div>
+  </div>
+
+  <!-- ── Focus Timer (floating) ────────────────────────────────────────── -->
+  <div id="life-timer" class="life-timer hidden">
+    <span class="life-timer-label" id="life-timer-label"></span>
+    <span id="life-timer-display">60:00</span>
+    <button id="btn-life-timer-cancel" type="button">Cancel</button>
+  </div>
+
+  <!-- ── Life Log Modal ───────────────────────────────────────────────── -->
+  <div id="life-modal-overlay" class="life-modal-overlay hidden">
+    <div class="life-modal">
+      <div id="life-modal-title" class="life-modal-title"></div>
+      <form id="life-modal-form">
+        <textarea id="life-modal-activity" class="life-modal-activity" rows="2" placeholder="What did you do this hour?" required></textarea>
+        <div class="life-modal-label" style="margin-top:12px;">Category</div>
+        <div id="life-modal-cats" class="life-cat-pills"></div>
+        <div class="life-modal-actions" style="margin-top:16px;">
+          <button id="btn-life-modal-cancel" class="life-modal-cancel" type="button">Cancel</button>
+          <button class="life-modal-save" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="app.js"></script>
   <script src="backtest.js"></script>
   <script src="analytics-dashboard.js"></script>
   <script src="course.js"></script>
+  <script src="life.js"></script>
 </body>
 </html>

@@ -1,0 +1,579 @@
+/* ── Life Tab ─────────────────────────────────────────────────────────────── */
+#life-panel {
+  position: fixed;
+  top: var(--toolbar-h);
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f0f0f5;
+  overflow: hidden;
+}
+
+/* ── Calendar Header ─────────────────────────────────────────────────────── */
+.life-cal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#life-month-label {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  min-width: 160px;
+}
+
+.life-nav-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text);
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.life-nav-btn:hover    { background: #e5e5ea; }
+.life-nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.life-today-btn {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(92,142,0,0.08);
+  border: 1px solid rgba(92,142,0,0.22);
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.life-today-btn:hover { background: rgba(92,142,0,0.15); }
+.life-today-btn.hidden { display: none; }
+
+.life-alarm-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 0.12s;
+}
+.life-alarm-btn:hover { background: rgba(0,0,0,0.06); }
+
+/* ── Weekday Labels ──────────────────────────────────────────────────────── */
+.life-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.life-cal-weekdays span {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 6px 0;
+}
+
+.life-cal-weekdays span:nth-child(6),
+.life-cal-weekdays span:nth-child(7) {
+  color: var(--live-red, #d93030);
+  opacity: 0.7;
+}
+
+/* ── Calendar Grid ───────────────────────────────────────────────────────── */
+.life-cal-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  background: var(--border);
+  padding: 1px;
+  overflow: hidden;
+}
+
+/* ── Calendar Cell ───────────────────────────────────────────────────────── */
+.life-cal-cell {
+  background: #fff;
+  padding: 8px 10px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.12s;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.life-cal-cell:hover { background: #f7f7fb; }
+
+.life-cal-cell--empty {
+  background: #f5f5f8;
+  cursor: default;
+  pointer-events: none;
+}
+
+.life-cal-cell--past { background: #fafafc; }
+.life-cal-cell--past .life-cal-num { color: var(--text-faint); }
+
+.life-cal-cell--today {
+  background: rgba(92,142,0,0.05);
+}
+.life-cal-cell--today .life-cal-num {
+  color: var(--accent);
+  font-weight: 800;
+}
+.life-cal-cell--today::after {
+  content: '';
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.life-cal-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.life-cal-dots {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.life-cal-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.life-cal-bar {
+  height: 3px;
+  background: rgba(0,0,0,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.life-cal-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width 0.3s;
+}
+
+/* ── Day Detail Overlay ──────────────────────────────────────────────────── */
+.life-day-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.life-day-overlay.hidden { display: none; }
+
+.life-day-panel {
+  background: #fff;
+  border-radius: 24px 24px 0 0;
+  width: 100%;
+  max-width: 620px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: life-panel-up 0.25s ease;
+}
+
+@keyframes life-panel-up {
+  from { transform: translateY(40px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.life-day-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#life-day-label {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+#btn-life-day-close {
+  background: var(--surface2);
+  border: none;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim);
+  transition: background 0.12s;
+}
+#btn-life-day-close:hover { background: #e0e0e8; }
+
+.life-day-hours {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ── Hour Block (in day panel) ───────────────────────────────────────────── */
+.life-hour-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  position: relative;
+}
+
+.life-hour-block:hover { background: #f5f5fa; border-color: var(--border); }
+
+.life-hour-time {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-faint);
+  min-width: 38px;
+  flex-shrink: 0;
+}
+
+.life-hour-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.life-hour-text {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.life-hour-placeholder {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.life-hour-cat {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cat) 12%, transparent);
+  color: var(--cat);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.life-hour-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.life-hour-block:hover .life-hour-actions { opacity: 1; }
+
+.life-hour-btn-edit,
+.life-hour-btn-alarm {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+.life-hour-btn-edit:hover  { color: var(--accent); background: rgba(92,142,0,0.08); }
+.life-hour-btn-alarm:hover { color: #e07000; background: rgba(224,112,0,0.08); }
+
+.life-hour-btn-alarm--active {
+  color: #e07000 !important;
+  background: rgba(224,112,0,0.10) !important;
+  opacity: 1 !important;
+}
+
+.life-hour-btn-del {
+  position: absolute;
+  right: 8px; top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  line-height: 1;
+}
+.life-hour-block:hover .life-hour-btn-del { opacity: 1; }
+.life-hour-btn-del:hover { color: var(--live-red); }
+
+/* Block state variants */
+.life-hour--current {
+  background: rgba(92,142,0,0.05);
+  border-color: rgba(92,142,0,0.25);
+  animation: life-pulse 2.5s ease-in-out infinite;
+}
+.life-hour--current .life-hour-time { color: var(--accent); }
+.life-hour--current .life-hour-actions { opacity: 1; }
+
+.life-hour--past   { background: rgba(0,0,0,0.015); }
+.life-hour--past .life-hour-time { opacity: 0.5; }
+
+.life-hour--future { opacity: 0.3; cursor: default; pointer-events: none; }
+
+.life-focus-tick {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e07000;
+}
+
+@keyframes life-pulse {
+  0%,100% { box-shadow: 0 0 0 2px rgba(92,142,0,0.10); }
+  50%      { box-shadow: 0 0 0 4px rgba(92,142,0,0.18); }
+}
+
+/* ── Focus Timer (floating) ──────────────────────────────────────────────── */
+.life-timer {
+  position: fixed;
+  top: calc(var(--toolbar-h) + 12px);
+  right: 16px;
+  z-index: 600;
+  background: #1a1a1e;
+  color: #fff;
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+  animation: life-toast-in 0.2s ease;
+}
+.life-timer.hidden { display: none; }
+
+.life-timer-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+#life-timer-display {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: 'IBM Plex Mono', monospace;
+  color: #e07000;
+  min-width: 62px;
+  text-align: right;
+}
+
+#btn-life-timer-cancel {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+#btn-life-timer-cancel:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* ── Log Modal ───────────────────────────────────────────────────────────── */
+.life-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.life-modal-overlay.hidden { display: none; }
+
+.life-modal {
+  background: #fff;
+  border-radius: 18px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.life-modal-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.life-modal-activity {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface2, #f5f5f8);
+  border: 1.5px solid var(--border-strong, #d8d8e0);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  resize: none;
+}
+.life-modal-activity:focus { border-color: var(--accent); }
+
+.life-modal-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.life-cat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.life-cat-pill { display: flex; align-items: center; cursor: pointer; }
+.life-cat-pill input[type="radio"] { display: none; }
+.life-cat-pill span {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--cat) 35%, transparent);
+  color: var(--cat);
+  background: color-mix(in srgb, var(--cat) 8%, transparent);
+  transition: background 0.12s;
+}
+.life-cat-pill input:checked + span {
+  background: color-mix(in srgb, var(--cat) 20%, transparent);
+  border-color: var(--cat);
+}
+
+.life-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.life-modal-save {
+  background: rgba(92,142,0,0.10);
+  border: 1px solid rgba(92,142,0,0.28);
+  color: var(--accent);
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.life-modal-save:hover { background: rgba(92,142,0,0.18); }
+
+.life-modal-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.life-modal-cancel:hover { background: var(--surface2); }
+
+/* ── Alarm Toast ─────────────────────────────────────────────────────────── */
+.life-alarm-toast {
+  position: fixed;
+  bottom: 24px; right: 24px;
+  z-index: 800;
+  background: #1a1a1e;
+  color: #fff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+  animation: life-toast-in 0.25s ease;
+  max-width: 300px;
+}
+
+@keyframes life-toast-in {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.life-toast-msg { font-size: 13px; flex: 1; }
+
+.life-alarm-toast button {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.life-alarm-toast button:hover { background: rgba(255,255,255,0.2); }
+#btn-toast-dismiss { padding: 5px 7px; color: rgba(255,255,255,0.5); background: none; }
+#btn-toast-dismiss:hover { background: none; color: #fff; }

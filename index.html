@@ -64,26 +64,12 @@
           </div>
         </div>
 
-        <div class="backtest-card journal-entries-card">
-          <div class="backtest-section-head">
-            <div>
-              <div class="panel-label">Entries</div>
-              <p id="journal-entries-subtitle">Saved trades for the selected stream.</p>
-            </div>
-          </div>
-          <div id="journal-status" class="panel-status">No stream selected.</div>
-          <div id="journal-entries" class="journal-entries"></div>
-        </div>
-
-      </aside>
-
-      <div class="backtest-main">
-
-        <div class="backtest-card stream-browser-card">
+        <!-- Past Streams — vertical list in sidebar -->
+        <div class="backtest-card stream-sidebar-card">
           <div class="backtest-section-head">
             <div>
               <div class="panel-label">Past Streams</div>
-              <p id="streams-subtitle">Pick a source to load completed livestreams.</p>
+              <p id="streams-subtitle" class="panel-status">Pick a source.</p>
             </div>
             <div class="section-actions">
               <button id="btn-filter-reviewed" class="ghost-btn" type="button" title="Hide reviewed streams">Hide done</button>
@@ -91,13 +77,14 @@
             </div>
           </div>
           <div id="stream-list-status" class="panel-status">No source selected.</div>
-          <div class="stream-grid-wrap">
-            <button class="stream-scroll-btn" id="btn-scroll-left" type="button" aria-label="Scroll left">&#8249;</button>
-            <div id="backtest-stream-list" class="stream-grid" aria-live="polite"></div>
-            <button class="stream-scroll-btn" id="btn-scroll-right" type="button" aria-label="Scroll right">&#8250;</button>
-          </div>
+          <div id="backtest-stream-list" class="stream-list-vertical" aria-live="polite"></div>
         </div>
 
+      </aside>
+
+      <div class="backtest-main">
+
+        <!-- ① VIDEO — fixed, never scrolls away -->
         <div class="backtest-card player-card">
           <div class="backtest-section-head">
             <div>
@@ -106,14 +93,14 @@
             </div>
             <div class="player-tools">
               <div id="player-meta" class="player-meta"></div>
-              <button id="btn-analyze-stream" class="ghost-btn" type="button" disabled title="Extract trade markers from transcript">Markers</button>
-              <button id="btn-msm-analyse" class="ghost-btn msm-analyse-btn" type="button" disabled title="Full MSM strategy analysis">MSM Analyse</button>
+              <button id="btn-analyze-stream" class="ghost-btn" type="button" disabled>Markers</button>
+              <button id="btn-msm-analyse" class="ghost-btn msm-analyse-btn" type="button" disabled>MSM Analyse</button>
             </div>
           </div>
           <div id="backtest-player-shell">
             <div id="backtest-player-empty" class="empty-panel">
               <div class="big-icon">&#9654;</div>
-              <p>Select a past stream to load it here.</p>
+              <p>Select a stream to load it here.</p>
             </div>
             <div id="backtest-player-frame" class="hidden">
               <div id="backtest-player"></div>
@@ -121,48 +108,65 @@
           </div>
         </div>
 
-        <!-- Trade marker analysis (existing) -->
-        <div id="analysis-panel" class="backtest-card hidden">
-          <div class="backtest-section-head">
-            <div class="panel-label">Trade Markers</div>
-          </div>
-          <p id="analysis-status" class="panel-status">Select a stream to enable transcript analysis.</p>
-          <div id="analysis-markers" class="analysis-markers-list"></div>
-        </div>
+        <!-- ② SCROLL AREA — MSM analysis + entries scroll below the video -->
+        <div class="bt-scroll-area">
 
-        <!-- MSM Strategy Analysis panel -->
-        <div id="msm-panel" class="backtest-card msm-panel hidden">
-          <div class="backtest-section-head">
-            <div>
-              <div class="panel-label">MSM Analysis</div>
-              <p id="msm-status" class="panel-status">Select a stream and click MSM Analyse.</p>
+          <!-- Trade markers (hidden until analysed) -->
+          <div id="analysis-panel" class="backtest-card hidden">
+            <div class="backtest-section-head">
+              <div class="panel-label">Trade Markers</div>
             </div>
-            <button id="btn-msm-reanalyse" class="ghost-btn hidden" type="button" title="Force re-analysis">Re-analyse</button>
+            <p id="analysis-status" class="panel-status">Select a stream to enable transcript analysis.</p>
+            <div id="analysis-markers" class="analysis-markers-list"></div>
           </div>
 
-          <div id="msm-content" class="msm-content hidden">
+          <!-- MSM Strategy Analysis (hidden until analysed) -->
+          <div id="msm-panel" class="backtest-card msm-panel hidden">
+            <div class="backtest-section-head">
+              <div class="msm-panel-title-block">
+                <div class="panel-label">MSM Analysis</div>
+                <h2 id="msm-stream-title" class="msm-stream-title">—</h2>
+              </div>
+              <button id="btn-msm-reanalyse" class="ghost-btn hidden" type="button">Re-analyse</button>
+            </div>
+            <p id="msm-status" class="panel-status"></p>
 
-            <!-- Market context -->
-            <div class="msm-market-context">
-              <div class="msm-section-label">Market Context</div>
-              <p id="msm-market-context-text"></p>
-              <div class="msm-conformity-row">
-                <span class="msm-section-label">MSM Conformity</span>
-                <span id="msm-conformity-badge" class="msm-conformity-badge"></span>
+            <div id="msm-paste-zone" class="msm-paste-zone hidden">
+              <p class="msm-paste-hint">YouTube captions are disabled. Paste your stream notes below and click Analyse.</p>
+              <textarea id="msm-paste-input" class="msm-paste-input" rows="6" placeholder="Paste stream notes or transcript here…"></textarea>
+              <button id="btn-msm-analyse-pasted" class="ghost-btn msm-analyse-btn" type="button">Analyse Pasted Text</button>
+            </div>
+
+            <div id="msm-content" class="msm-content hidden">
+              <div class="msm-market-context">
+                <div class="msm-section-label">Market Context</div>
+                <p id="msm-market-context-text"></p>
+                <div class="msm-conformity-row">
+                  <span class="msm-section-label">MSM Conformity</span>
+                  <span id="msm-conformity-badge" class="msm-conformity-badge"></span>
+                </div>
+              </div>
+              <div id="msm-trades" class="msm-trades"></div>
+              <div class="msm-lessons-section">
+                <div class="msm-section-label">Key Lessons</div>
+                <ol id="msm-lessons-list" class="msm-lessons-list"></ol>
               </div>
             </div>
-
-            <!-- Trades -->
-            <div id="msm-trades" class="msm-trades"></div>
-
-            <!-- Top lessons -->
-            <div class="msm-lessons-section">
-              <div class="msm-section-label">Key Lessons From This Stream</div>
-              <ol id="msm-lessons-list" class="msm-lessons-list"></ol>
-            </div>
-
           </div>
-        </div>
+
+          <!-- Stream entries -->
+          <div class="backtest-card journal-entries-card">
+            <div class="backtest-section-head">
+              <div>
+                <div class="panel-label">Stream Entries</div>
+                <p id="journal-entries-subtitle">Trades logged for this stream.</p>
+              </div>
+            </div>
+            <div id="journal-status" class="panel-status">No stream selected.</div>
+            <div id="journal-entries" class="journal-entries"></div>
+          </div>
+
+        </div><!-- end bt-scroll-area -->
 
       </div>
 

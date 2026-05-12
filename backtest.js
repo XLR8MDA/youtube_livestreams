@@ -291,20 +291,7 @@ function setupLoadMore() {
 }
 
 function setupStreamScroll() {
-  const grid  = document.getElementById('backtest-stream-list');
-  const left  = document.getElementById('btn-scroll-left');
-  const right = document.getElementById('btn-scroll-right');
-  const STEP  = 340;
-
-  function updateButtons() {
-    left.disabled  = grid.scrollLeft <= 0;
-    right.disabled = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 1;
-  }
-
-  left.addEventListener('click',  () => { grid.scrollBy({ left: -STEP, behavior: 'smooth' }); });
-  right.addEventListener('click', () => { grid.scrollBy({ left:  STEP, behavior: 'smooth' }); });
-  grid.addEventListener('scroll', updateButtons);
-  updateButtons();
+  // Scroll buttons removed — streams now in vertical sidebar list
 }
 
 // ── Player ────────────────────────────────────────────────────────────────
@@ -321,6 +308,8 @@ function selectStream(stream) {
   btMarkers     = [];
 
   document.getElementById('backtest-player-title').textContent = title;
+  const msmTitle = document.getElementById('msm-stream-title');
+  if (msmTitle) msmTitle.textContent = title;
   document.getElementById('backtest-player-empty').classList.add('hidden');
   document.getElementById('backtest-player-frame').classList.remove('hidden');
   document.getElementById('journal-context').textContent = `Logging for: ${title}`;
@@ -337,6 +326,8 @@ function selectStream(stream) {
   } else {
     btPlayer = new YT.Player('backtest-player', {
       videoId,
+      width:  '100%',
+      height: '100%',
       playerVars: { controls: 1, rel: 0, modestbranding: 1 },
     });
   }
@@ -352,6 +343,8 @@ function resetPlayer() {
   btStreamMeta  = null;
   btMarkers     = [];
   document.getElementById('backtest-player-title').textContent = 'No stream selected';
+  const msmTitleR = document.getElementById('msm-stream-title');
+  if (msmTitleR) msmTitleR.textContent = '—';
   document.getElementById('backtest-player-empty').classList.remove('hidden');
   document.getElementById('backtest-player-frame').classList.add('hidden');
   document.getElementById('player-meta').innerHTML = '';
@@ -914,49 +907,71 @@ function btEscAttr(str) {
 function setupMsmAnalyseButton() {
   const btn       = document.getElementById('btn-msm-analyse');
   const reanalyse = document.getElementById('btn-msm-reanalyse');
+  const pasteBtn  = document.getElementById('btn-msm-analyse-pasted');
   if (!btn) return;
 
   btn.addEventListener('click', () => {
     if (!btStreamId) { btShowToast('Select a stream first', 'error'); return; }
-    runMsmAnalysis(btStreamId, false);
+    runMsmAnalysis(btStreamId, false, null);
   });
 
   if (reanalyse) {
     reanalyse.addEventListener('click', () => {
       if (!btStreamId) return;
-      runMsmAnalysis(btStreamId, true);
+      runMsmAnalysis(btStreamId, false, null, true);
+    });
+  }
+
+  if (pasteBtn) {
+    pasteBtn.addEventListener('click', () => {
+      const text = document.getElementById('msm-paste-input')?.value?.trim();
+      if (!text) { btShowToast('Paste some text first', 'error'); return; }
+      runMsmAnalysis(btStreamId, false, text);
     });
   }
 }
 
-async function runMsmAnalysis(videoId, force = false) {
+async function runMsmAnalysis(videoId, _unused = false, pastedText = null, force = false) {
   const panel     = document.getElementById('msm-panel');
   const status    = document.getElementById('msm-status');
   const content   = document.getElementById('msm-content');
+  const pasteZone = document.getElementById('msm-paste-zone');
   const btn       = document.getElementById('btn-msm-analyse');
+  const pasteBtn  = document.getElementById('btn-msm-analyse-pasted');
   const reanalyse = document.getElementById('btn-msm-reanalyse');
 
   panel.classList.remove('hidden');
   content.classList.add('hidden');
+  pasteZone.classList.add('hidden');
   reanalyse.classList.add('hidden');
-  status.textContent = 'Fetching transcript and running MSM analysis…';
+  status.textContent = pastedText
+    ? 'Running MSM analysis on pasted text…'
+    : 'Fetching transcript and running MSM analysis…';
   btn.disabled = true;
   btn.textContent = 'Analysing…';
+  if (pasteBtn) pasteBtn.disabled = true;
 
   try {
-    const res = force
-      ? await fetch('/.netlify/functions/msm-analyse', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ videoId }),
-        })
-      : await fetch(`/.netlify/functions/msm-analyse?videoId=${encodeURIComponent(videoId)}`);
+    const res = await fetch('/.netlify/functions/msm-analyse', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ videoId, pastedText: pastedText || undefined, force }),
+    });
 
     const data = await res.json().catch(() => ({}));
+
+    // No captions — show paste zone
+    if (res.status === 404 && data.error === 'noCaption') {
+      status.textContent = 'YouTube captions unavailable. Paste your stream notes below to analyse.';
+      pasteZone.classList.remove('hidden');
+      return;
+    }
+
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
 
-    const cacheNote = data.cached ? ' (cached)' : '';
-    status.textContent = `Analysis complete${cacheNote} — ${data.trades?.length || 0} trade(s) found.`;
+    const cacheNote = data.cached ? 'Cached · ' : '';
+    const tradeCount = data.trades?.length || 0;
+    status.textContent = `${cacheNote}${tradeCount} trade${tradeCount === 1 ? '' : 's'} identified`;
 
     renderMsmAnalysis(data);
     reanalyse.classList.remove('hidden');
@@ -969,19 +984,22 @@ async function runMsmAnalysis(videoId, force = false) {
   } finally {
     btn.disabled = false;
     btn.textContent = 'MSM Analyse';
+    if (pasteBtn) pasteBtn.disabled = false;
   }
 }
 
 function resetMsmPanel() {
-  const panel   = document.getElementById('msm-panel');
-  const content = document.getElementById('msm-content');
-  const status  = document.getElementById('msm-status');
+  const panel     = document.getElementById('msm-panel');
+  const content   = document.getElementById('msm-content');
+  const pasteZone = document.getElementById('msm-paste-zone');
+  const status    = document.getElementById('msm-status');
   const reanalyse = document.getElementById('btn-msm-reanalyse');
   if (!panel) return;
   panel.classList.add('hidden');
   content?.classList.add('hidden');
+  pasteZone?.classList.add('hidden');
   reanalyse?.classList.add('hidden');
-  if (status) status.textContent = 'Select a stream and click MSM Analyse.';
+  if (status) status.textContent = '';
 }
 
 function renderMsmAnalysis(data) {

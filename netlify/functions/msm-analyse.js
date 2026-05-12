@@ -134,50 +134,52 @@ exports.handler = async (event) => {
   if (!process.env.DATABASE_URL) return respond(500, { error: 'DATABASE_URL not set' });
   if (!process.env.GROQ_API_KEY)  return respond(500, { error: 'GROQ_API_KEY not set' });
 
-  const isForce = event.httpMethod === 'POST';
-  const params  = isForce
+  const isPost  = event.httpMethod === 'POST';
+  const params  = isPost
     ? JSON.parse(event.body || '{}')
     : (event.queryStringParameters || {});
 
-  const { videoId } = params;
+  const { videoId, pastedText, force } = params;
   if (!videoId) return respond(400, { error: 'videoId is required' });
+
+  const isForce = isPost && force === true;
 
   try {
     const sql = await getDb();
 
-    // Return cached result unless force re-analyse
-    if (!isForce) {
+    // Return cached result unless forced or pasted text provided
+    if (!isForce && !pastedText) {
       const rows = await sql`SELECT result FROM msm_analysis WHERE video_id = ${videoId}`;
       if (rows.length) return respond(200, { cached: true, videoId, ...rows[0].result });
     }
 
-    // Fetch transcript
-    let raw;
-    try {
-      raw = await YoutubeTranscript.fetchTranscript(videoId);
-    } catch (err) {
-      const msg = err.message || String(err);
-      const noCaption = msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find');
-      if (noCaption) return respond(404, { error: 'YouTube captions unavailable for this video' });
-      throw err;
+    let transcriptText;
+
+    if (pastedText && pastedText.trim()) {
+      // User provided their own notes/transcript — use directly
+      transcriptText = pastedText.trim().slice(0, 10_000);
+    } else {
+      // Fetch from YouTube
+      let raw;
+      try {
+        raw = await YoutubeTranscript.fetchTranscript(videoId);
+      } catch (err) {
+        const msg = err.message || String(err);
+        const noCaption = msg.includes('disabled') || msg.includes('No transcript') || msg.includes('Could not find');
+        if (noCaption) return respond(404, { error: 'noCaption' });
+        throw err;
+      }
+
+      if (!raw || raw.length === 0) return respond(404, { error: 'noCaption' });
+
+      // Smart filtering: keyword match + sampling for Hindi streams
+      const MSM_KEYWORDS = /\b(long|short|buy|sell|entry|exit|tp|sl|stop|target|structure|bias|choch|pullback|ob|fvg|fibonacci|fib|liquidity|sweep|breakout|setup|level|price|momentum|reversal|continuation|support|resistance|timeframe|scalp|trade|position|order|risk|reward|gold|xau|eur|gbp|jpy|usd|btc|nas|dow|high|low|break|candle|close|open|market|zone)\b/i;
+      const allLines     = raw.map(seg => seg.text.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const keywordLines = allLines.filter(line => MSM_KEYWORDS.test(line));
+      const sampledLines = allLines.filter((_, i) => i % 3 === 0);
+      const combined     = [...new Set([...keywordLines, ...sampledLines])];
+      transcriptText     = combined.join(' ').slice(0, 7_000);
     }
-
-    if (!raw || raw.length === 0) return respond(404, { error: 'Transcript is empty' });
-
-    // Smart filtering: keep all trading/analysis-relevant lines
-    // For Hindi streams, include more generic terms since keywords appear transliterated
-    const MSM_KEYWORDS = /\b(long|short|buy|sell|entry|exit|tp|sl|stop|target|structure|bias|choch|pullback|ob|fvg|fibonacci|fib|liquidity|sweep|breakout|setup|level|price|momentum|reversal|continuation|support|resistance|timeframe|scalp|trade|position|order|risk|reward|gold|xau|eur|gbp|jpy|usd|btc|nas|dow|high|low|break|candle|close|open|market|zone)\b/i;
-
-    const allLines = raw.map(seg => seg.text.replace(/\s+/g, ' ').trim()).filter(Boolean);
-
-    // For Hindi transcripts, the keyword filter may miss too much — take every 3rd line to sample full context
-    // while also including all keyword-matching lines
-    const keywordLines  = allLines.filter(line => MSM_KEYWORDS.test(line));
-    const sampledLines  = allLines.filter((_, i) => i % 3 === 0);
-    const combined      = [...new Set([...keywordLines, ...sampledLines])];
-
-    // Cap at ~7000 chars to stay within Groq TPM limits (system prompt is ~2500 tokens)
-    const transcriptText = combined.join(' ').slice(0, 7_000);
 
     // Call Groq
     const groqRes = await fetch(GROQ_API, {

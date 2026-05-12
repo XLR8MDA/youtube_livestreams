@@ -106,6 +106,8 @@
             </div>
             <div class="player-tools">
               <div id="player-meta" class="player-meta"></div>
+              <button id="btn-analyze-stream" class="ghost-btn" type="button" disabled title="Extract trade markers from transcript">Markers</button>
+              <button id="btn-msm-analyse" class="ghost-btn msm-analyse-btn" type="button" disabled title="Full MSM strategy analysis">MSM Analyse</button>
             </div>
           </div>
           <div id="backtest-player-shell">
@@ -116,6 +118,49 @@
             <div id="backtest-player-frame" class="hidden">
               <div id="backtest-player"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Trade marker analysis (existing) -->
+        <div id="analysis-panel" class="backtest-card hidden">
+          <div class="backtest-section-head">
+            <div class="panel-label">Trade Markers</div>
+          </div>
+          <p id="analysis-status" class="panel-status">Select a stream to enable transcript analysis.</p>
+          <div id="analysis-markers" class="analysis-markers-list"></div>
+        </div>
+
+        <!-- MSM Strategy Analysis panel -->
+        <div id="msm-panel" class="backtest-card msm-panel hidden">
+          <div class="backtest-section-head">
+            <div>
+              <div class="panel-label">MSM Analysis</div>
+              <p id="msm-status" class="panel-status">Select a stream and click MSM Analyse.</p>
+            </div>
+            <button id="btn-msm-reanalyse" class="ghost-btn hidden" type="button" title="Force re-analysis">Re-analyse</button>
+          </div>
+
+          <div id="msm-content" class="msm-content hidden">
+
+            <!-- Market context -->
+            <div class="msm-market-context">
+              <div class="msm-section-label">Market Context</div>
+              <p id="msm-market-context-text"></p>
+              <div class="msm-conformity-row">
+                <span class="msm-section-label">MSM Conformity</span>
+                <span id="msm-conformity-badge" class="msm-conformity-badge"></span>
+              </div>
+            </div>
+
+            <!-- Trades -->
+            <div id="msm-trades" class="msm-trades"></div>
+
+            <!-- Top lessons -->
+            <div class="msm-lessons-section">
+              <div class="msm-section-label">Key Lessons From This Stream</div>
+              <ol id="msm-lessons-list" class="msm-lessons-list"></ol>
+            </div>
+
           </div>
         </div>
 

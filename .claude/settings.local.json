@@ -40,7 +40,8 @@
       "Bash(pip show:*)",
       "Bash(cmd:*)",
       "Bash(powershell:*)",
-      "Bash(xargs -r taskkill //F //PID)"
+      "Bash(xargs -r taskkill //F //PID)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Trades:', len\\(d.get\\('trades',[]\\)\\), '| Cached:', d.get\\('cached'\\)\\); t=d['trades'][0] if d.get\\('trades'\\) else {}; print\\('Pair:', t.get\\('pair'\\), '| Direction:', t.get\\('direction'\\), '| Result:', t.get\\('result'\\)\\); print\\('Checklist pass:', sum\\(1 for v in t.get\\('msmChecklist',{}\\).values\\(\\) if v\\), '/', len\\(t.get\\('msmChecklist',{}\\)\\)\\); print\\('Lessons:', len\\(d.get\\('topLessons',[]\\)\\)\\)\")"
     ]
   }
 }

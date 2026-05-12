@@ -1177,3 +1177,229 @@
   .backtest-main,
   .backtest-journal { overflow-y: visible; }
 }
+
+/* ── MSM Analyse Button ───────────────────────────────────────────────────── */
+.msm-analyse-btn {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.msm-analyse-btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* ── MSM Panel ───────────────────────────────────────────────────────────── */
+.msm-panel { margin-top: 12px; }
+
+.msm-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.msm-market-context {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.msm-market-context p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 4px 0 10px;
+}
+.msm-conformity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.msm-conformity-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: .06em;
+}
+.msm-conformity--high   { background: rgba(34,197,94,.18);  color: #22c55e; }
+.msm-conformity--medium { background: rgba(234,179,8,.18);  color: #eab308; }
+.msm-conformity--low    { background: rgba(239,68,68,.18);  color: #ef4444; }
+
+/* Trade cards */
+.msm-trades { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+
+.msm-trade-card {
+  background: var(--surface2);
+  border-radius: 10px;
+  border-left: 3px solid var(--border);
+  padding: 14px;
+}
+.msm-trade--win  { border-left-color: #22c55e; }
+.msm-trade--loss { border-left-color: #ef4444; }
+.msm-trade--be   { border-left-color: #eab308; }
+
+.msm-trade-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.msm-trade-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.msm-trade-pair {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text);
+}
+.msm-trade-dir {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.msm-dir--long  { background: rgba(34,197,94,.15);  color: #22c55e; }
+.msm-dir--short { background: rgba(239,68,68,.15);  color: #ef4444; }
+
+.msm-trade-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--surface3);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.msm-trade-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.msm-result-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: .06em;
+}
+.msm-result--win  { background: rgba(34,197,94,.18);  color: #22c55e; }
+.msm-result--loss { background: rgba(239,68,68,.18);  color: #ef4444; }
+.msm-result--be   { background: rgba(234,179,8,.18);  color: #eab308; }
+
+.msm-partial-badge {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--surface3);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.msm-autofill-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.msm-autofill-btn:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.msm-trade-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+/* MSM checklist pills */
+.msm-checklist-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.msm-check {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.msm-check--yes { background: rgba(34,197,94,.14); color: #22c55e; }
+.msm-check--no  { background: rgba(239,68,68,.10); color: #ef4444; }
+
+/* Details grid */
+.msm-details-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.msm-detail-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.msm-detail-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.msm-detail-value { color: var(--text); }
+
+/* Psychology note */
+.msm-psychology {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface3));
+  border-left: 2px solid var(--accent);
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.msm-psych-icon { margin-right: 6px; }
+
+/* Execution insights */
+.msm-insights-list {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.7;
+  padding-left: 18px;
+  margin: 6px 0 0;
+}
+
+/* Top lessons section */
+.msm-lessons-section {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.msm-lessons-list {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.8;
+  padding-left: 18px;
+  margin: 6px 0 0;
+}
+
+/* Analysis markers (trade markers panel) */
+.analysis-markers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+}

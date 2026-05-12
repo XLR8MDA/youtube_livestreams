@@ -25,6 +25,7 @@ function initBacktest() {
   setupJournalForm();
   setupJournalPairSelect();
   setupAnalyzeButton();
+  setupMsmAnalyseButton();
   setupScreenshotPaste();
   setupReviewFilter();
 }
@@ -325,8 +326,11 @@ function selectStream(stream) {
   document.getElementById('journal-context').textContent = `Logging for: ${title}`;
   const analyzeBtn2 = document.getElementById('btn-analyze-stream');
   if (analyzeBtn2) analyzeBtn2.disabled = false;
+  const msmBtn = document.getElementById('btn-msm-analyse');
+  if (msmBtn) msmBtn.disabled = false;
   renderPlayerMeta(stream);
   resetAnalysisState(true);
+  resetMsmPanel();
 
   if (btPlayer) {
     btPlayer.loadVideoById(videoId);
@@ -353,7 +357,10 @@ function resetPlayer() {
   document.getElementById('player-meta').innerHTML = '';
   const analyzeBtn = document.getElementById('btn-analyze-stream');
   if (analyzeBtn) analyzeBtn.disabled = true;
+  const msmBtnR = document.getElementById('btn-msm-analyse');
+  if (msmBtnR) msmBtnR.disabled = true;
   resetAnalysisState(true);
+  resetMsmPanel();
   if (btPlayer) {
     try { btPlayer.destroy(); } catch {}
     btPlayer = null;
@@ -900,6 +907,262 @@ function btEscHtml(str) {
 
 function btEscAttr(str) {
   return String(str).replace(/"/g, '&quot;');
+}
+
+// ── MSM Strategy Analysis ─────────────────────────────────────────────────
+
+function setupMsmAnalyseButton() {
+  const btn       = document.getElementById('btn-msm-analyse');
+  const reanalyse = document.getElementById('btn-msm-reanalyse');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    if (!btStreamId) { btShowToast('Select a stream first', 'error'); return; }
+    runMsmAnalysis(btStreamId, false);
+  });
+
+  if (reanalyse) {
+    reanalyse.addEventListener('click', () => {
+      if (!btStreamId) return;
+      runMsmAnalysis(btStreamId, true);
+    });
+  }
+}
+
+async function runMsmAnalysis(videoId, force = false) {
+  const panel     = document.getElementById('msm-panel');
+  const status    = document.getElementById('msm-status');
+  const content   = document.getElementById('msm-content');
+  const btn       = document.getElementById('btn-msm-analyse');
+  const reanalyse = document.getElementById('btn-msm-reanalyse');
+
+  panel.classList.remove('hidden');
+  content.classList.add('hidden');
+  reanalyse.classList.add('hidden');
+  status.textContent = 'Fetching transcript and running MSM analysis…';
+  btn.disabled = true;
+  btn.textContent = 'Analysing…';
+
+  try {
+    const res = force
+      ? await fetch('/.netlify/functions/msm-analyse', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ videoId }),
+        })
+      : await fetch(`/.netlify/functions/msm-analyse?videoId=${encodeURIComponent(videoId)}`);
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    const cacheNote = data.cached ? ' (cached)' : '';
+    status.textContent = `Analysis complete${cacheNote} — ${data.trades?.length || 0} trade(s) found.`;
+
+    renderMsmAnalysis(data);
+    reanalyse.classList.remove('hidden');
+    content.classList.remove('hidden');
+    btShowToast('MSM analysis loaded', 'success');
+
+  } catch (err) {
+    status.textContent = `Analysis failed: ${err.message}`;
+    btShowToast(`MSM analyse failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'MSM Analyse';
+  }
+}
+
+function resetMsmPanel() {
+  const panel   = document.getElementById('msm-panel');
+  const content = document.getElementById('msm-content');
+  const status  = document.getElementById('msm-status');
+  const reanalyse = document.getElementById('btn-msm-reanalyse');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  content?.classList.add('hidden');
+  reanalyse?.classList.add('hidden');
+  if (status) status.textContent = 'Select a stream and click MSM Analyse.';
+}
+
+function renderMsmAnalysis(data) {
+  // Market context
+  document.getElementById('msm-market-context-text').textContent = data.marketContext || '';
+
+  // Conformity badge
+  const badge = document.getElementById('msm-conformity-badge');
+  badge.textContent = (data.msmConformity || 'medium').toUpperCase();
+  badge.className = `msm-conformity-badge msm-conformity--${data.msmConformity || 'medium'}`;
+
+  // Trades
+  const tradesEl = document.getElementById('msm-trades');
+  tradesEl.innerHTML = '';
+  const trades = Array.isArray(data.trades) ? data.trades : [];
+
+  trades.forEach((trade, idx) => {
+    const card = document.createElement('div');
+    card.className = `msm-trade-card msm-trade--${trade.result || 'be'}`;
+
+    const checklist = trade.msmChecklist || {};
+    const checkKeys = [
+      ['marketStructure',    'Market Structure'],
+      ['htfPoi',             'HTF POI'],
+      ['choch',              'CHOCH'],
+      ['pullback',           'Pullback'],
+      ['slowPullback',       'Slow Pullback'],
+      ['confirmationCandle', 'Confirmation Candle'],
+      ['slPlacement',        'SL Placement'],
+      ['liquidityTarget',    'Liquidity Target'],
+    ];
+    const checkHtml = checkKeys.map(([k, label]) =>
+      `<span class="msm-check ${checklist[k] ? 'msm-check--yes' : 'msm-check--no'}" title="${label}">
+        ${checklist[k] ? '&#10003;' : '&#10007;'} ${btEscHtml(label)}
+      </span>`
+    ).join('');
+
+    const insights = Array.isArray(trade.executionInsights) ? trade.executionInsights : [];
+    const insightsHtml = insights.length
+      ? `<ul class="msm-insights-list">${insights.map(i => `<li>${btEscHtml(i)}</li>`).join('')}</ul>`
+      : '';
+
+    const dirIcon  = trade.direction === 'long' ? '&#9650;' : '&#9660;';
+    const dirClass = trade.direction === 'long' ? 'msm-dir--long' : 'msm-dir--short';
+    const resultLabels = { win: 'WIN', loss: 'LOSS', be: 'BE' };
+
+    card.innerHTML = `
+      <div class="msm-trade-header">
+        <div class="msm-trade-title">
+          <span class="msm-trade-pair">${btEscHtml(trade.pair || 'Unknown')}</span>
+          <span class="msm-trade-dir ${dirClass}">${dirIcon} ${(trade.direction || '').toUpperCase()}</span>
+          ${trade.session ? `<span class="msm-trade-meta">${btEscHtml(trade.session.toUpperCase())}</span>` : ''}
+          ${trade.timeframe ? `<span class="msm-trade-meta">${btEscHtml(trade.timeframe)}</span>` : ''}
+        </div>
+        <div class="msm-trade-right">
+          <span class="msm-result-badge msm-result--${trade.result}">${resultLabels[trade.result] || 'BE'}</span>
+          ${trade.partialTp ? '<span class="msm-partial-badge">Partial TP</span>' : ''}
+          <button class="ghost-btn msm-autofill-btn" type="button" data-trade-idx="${idx}">Auto-fill Journal</button>
+        </div>
+      </div>
+
+      <p class="msm-trade-summary">${btEscHtml(trade.summary)}</p>
+
+      <div class="msm-checklist-row">${checkHtml}</div>
+
+      <div class="msm-details-grid">
+        ${msmDetailRow('HTF Bias',       trade.htfBias)}
+        ${msmDetailRow('HTF POI',        trade.htfPoi)}
+        ${msmDetailRow('CHOCH',          trade.choch)}
+        ${msmDetailRow('Pullback',       trade.pullbackType + (trade.pullbackZone ? ` → ${trade.pullbackZone}` : ''))}
+        ${msmDetailRow('Confirmation',   trade.confirmationCandle)}
+        ${msmDetailRow('Entry Logic',    trade.entryReasoning)}
+        ${msmDetailRow('SL',             trade.slPlacement)}
+        ${msmDetailRow('TP Targets',     trade.tpTargets)}
+        ${msmDetailRow('Drawdown',       trade.drawdown)}
+        ${msmDetailRow('During Drawdown',trade.drawdownResponse)}
+      </div>
+
+      ${trade.psychologyNotes ? `<div class="msm-psychology"><span class="msm-psych-icon">&#129504;</span> ${btEscHtml(trade.psychologyNotes)}</div>` : ''}
+      ${insightsHtml ? `<div class="msm-section-label" style="margin-top:12px">Execution Insights</div>${insightsHtml}` : ''}
+    `;
+
+    // Wire auto-fill button
+    card.querySelector('.msm-autofill-btn').addEventListener('click', () => msmAutoFill(trade));
+
+    tradesEl.appendChild(card);
+  });
+
+  if (trades.length === 0) {
+    tradesEl.innerHTML = '<p class="panel-status">No trades were identified in this stream.</p>';
+  }
+
+  // Lessons
+  const lessons = Array.isArray(data.topLessons) ? data.topLessons : [];
+  const lessonsList = document.getElementById('msm-lessons-list');
+  lessonsList.innerHTML = lessons.map(l => `<li>${btEscHtml(l)}</li>`).join('');
+}
+
+function msmDetailRow(label, value) {
+  if (!value) return '';
+  return `<div class="msm-detail-row">
+    <span class="msm-detail-label">${btEscHtml(label)}</span>
+    <span class="msm-detail-value">${btEscHtml(value)}</span>
+  </div>`;
+}
+
+function msmAutoFill(trade) {
+  if (!trade) return;
+
+  const existingPairs = [
+    ...(typeof DEFAULT_PAIRS !== 'undefined' ? DEFAULT_PAIRS : []),
+    ...(typeof customPairs   !== 'undefined' ? customPairs   : []),
+  ];
+
+  // Pair
+  if (trade.pair) {
+    const sel   = document.getElementById('trade-pair');
+    const match = existingPairs.find(p => p.value.toUpperCase() === trade.pair.toUpperCase());
+    if (match) {
+      sel.value = match.value;
+    } else {
+      document.getElementById('trade-pair-label-in').value = trade.pair;
+      document.getElementById('trade-pair-value-in').value = trade.pair.toUpperCase();
+      document.getElementById('trade-pair-add-row').classList.remove('hidden');
+    }
+  }
+
+  if (trade.direction) {
+    const dirSel = document.getElementById('trade-direction');
+    if (dirSel) dirSel.value = trade.direction;
+  }
+
+  if (trade.result) {
+    const resSel = document.getElementById('trade-result');
+    if (resSel) resSel.value = trade.result;
+  }
+
+  if (trade.session) {
+    const sessSel = document.getElementById('trade-session');
+    if (sessSel) sessSel.value = trade.session;
+  }
+
+  if (trade.timeframe) {
+    const tfSel = document.getElementById('trade-timeframe');
+    if (tfSel) tfSel.value = trade.timeframe;
+  }
+
+  // MSM fields
+  if (trade.htfPoi) {
+    const htfEl = document.getElementById('trade-htf-poi');
+    if (htfEl) htfEl.value = trade.htfPoi;
+  }
+
+  if (trade.choch) {
+    const chochEl = document.getElementById('trade-choch');
+    if (chochEl) chochEl.value = trade.choch;
+  }
+
+  if (trade.pullbackType || trade.pullbackZone) {
+    const pbEl = document.getElementById('trade-pullback-depth');
+    if (pbEl && !pbEl.value) pbEl.value = trade.pullbackZone || trade.pullbackType;
+  }
+
+  if (trade.confirmationCandle) {
+    const ccEl = document.getElementById('trade-confirmation-candle');
+    if (ccEl) ccEl.value = trade.confirmationCandle;
+  }
+
+  // Build notes from summary + psychology
+  const notesEl = document.getElementById('trade-notes');
+  if (notesEl && !notesEl.value) {
+    const parts = [];
+    if (trade.summary)         parts.push(trade.summary);
+    if (trade.psychologyNotes) parts.push(`Psychology: ${trade.psychologyNotes}`);
+    if (trade.drawdown)        parts.push(`Drawdown: ${trade.drawdown}`);
+    notesEl.value = parts.join('\n\n');
+  }
+
+  // Scroll to form
+  document.querySelector('.backtest-journal')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  btShowToast('Journal form filled from MSM analysis', 'success');
 }
 
 // Use the toast from app.js if available, otherwise log

@@ -381,6 +381,74 @@
   50%      { box-shadow: 0 0 0 4px rgba(92,142,0,0.18); }
 }
 
+/* ── Voice Assistant ─────────────────────────────────────────────────────── */
+.life-day-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.life-voice-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 34px; height: 34px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, box-shadow 0.15s;
+  flex-shrink: 0;
+}
+.life-voice-btn:hover { background: #e5e5ea; }
+.life-voice-btn.hidden { display: none; }
+
+.life-voice-btn--active {
+  background: rgba(220,50,50,0.10) !important;
+  border-color: rgba(220,50,50,0.40) !important;
+  box-shadow: 0 0 0 4px rgba(220,50,50,0.12);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%,100% { box-shadow: 0 0 0 3px rgba(220,50,50,0.12); }
+  50%      { box-shadow: 0 0 0 7px rgba(220,50,50,0.06); }
+}
+
+.life-voice-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: rgba(0,0,0,0.03);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.life-voice-bar.hidden { display: none; }
+
+.life-voice-wave {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--live-red, #d93030);
+  animation: wave-blink 0.8s steps(1) infinite;
+}
+@keyframes wave-blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+.life-voice-status {
+  font-size: 12px;
+  flex: 1;
+  line-height: 1.4;
+  font-style: italic;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.life-voice-status--processing { color: var(--accent); font-style: normal; }
+.life-voice-status--error      { color: var(--live-red); font-style: normal; }
+
 /* ── Focus Timer (floating) ──────────────────────────────────────────────── */
 .life-timer {
   position: fixed;

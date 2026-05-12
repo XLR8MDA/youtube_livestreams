@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   requestNotifPermission();
   scheduleAlarm();
+  initVoice();
 });
 
 function onLifeTabActivated() {
@@ -190,6 +191,21 @@ function openDayPanel(dateStr) {
 
   document.getElementById('life-day-label').textContent = fmtDayLabel(dateStr);
   renderDayHours(dateStr);
+
+  // Wire voice button for current/past hours — targets current hour or most recent past hour
+  const isToday   = dateStr === todayStr();
+  const targetHour = isToday
+    ? Math.min(new Date().getHours(), LIFE_END)
+    : LIFE_END;
+
+  const voiceBtn = document.getElementById('life-voice-btn');
+  if (voiceBtn) {
+    voiceBtn.onclick = () => {
+      if (voiceIsRecording) stopVoice(true);
+      else startVoice(targetHour, dateStr);
+    };
+    voiceBtn.classList.remove('hidden');
+  }
 
   document.getElementById('life-day-overlay').classList.remove('hidden');
 }
@@ -362,18 +378,19 @@ function cancelFocusTimer() {
 }
 
 // ── Log Modal ─────────────────────────────────────────────────────────────
-function openModal(hour, date) {
+function openModal(hour, date, prefillActivity, prefillCategory) {
   lifeLogHour = hour;
   lifeLogDate = date;
   const existing = lifeLogMap[hour];
 
   document.getElementById('life-modal-title').textContent = `${fmtHour(hour)} → ${fmtHour(hour + 1)}`;
-  document.getElementById('life-modal-activity').value = existing?.activity || '';
+  document.getElementById('life-modal-activity').value = prefillActivity ?? existing?.activity ?? '';
 
+  const activeCategory = prefillCategory ?? existing?.category;
   const pills = document.getElementById('life-modal-cats');
   pills.innerHTML = LIFE_CATS.map(c => `
     <label class="life-cat-pill" style="--cat:${c.color}">
-      <input type="radio" name="life-cat" value="${c.value}" ${existing?.category === c.value ? 'checked' : ''}>
+      <input type="radio" name="life-cat" value="${c.value}" ${activeCategory === c.value ? 'checked' : ''}>
       <span>${lifeEsc(c.label)}</span>
     </label>
   `).join('');
@@ -446,6 +463,103 @@ function refreshCalendarCell(dateStr) {
     dotsEl?.remove();
     barEl?.remove();
   }
+}
+
+// ── Voice Assistant ───────────────────────────────────────────────────────
+let voiceRecognition  = null;
+let voiceTranscript   = '';
+let voiceTargetHour   = null;
+let voiceTargetDate   = null;
+let voiceIsRecording  = false;
+
+function initVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return; // unsupported
+
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.continuous      = true;
+  voiceRecognition.interimResults  = true;
+  voiceRecognition.lang            = 'en-US';
+
+  voiceRecognition.onresult = e => {
+    let interim = '';
+    let final   = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    if (final) voiceTranscript += ' ' + final;
+    setVoiceStatus('listening', (voiceTranscript + interim).trim() || '…');
+  };
+
+  voiceRecognition.onerror = err => {
+    setVoiceStatus('error', `Mic error: ${err.error}`);
+    stopVoice(false);
+  };
+
+  voiceRecognition.onend = () => {
+    if (voiceIsRecording) voiceRecognition.start(); // keep going
+  };
+}
+
+function startVoice(hour, date) {
+  if (!voiceRecognition) {
+    alert('Voice recognition is not supported in this browser. Please use Chrome or Edge.');
+    return;
+  }
+  voiceTargetHour  = hour;
+  voiceTargetDate  = date;
+  voiceTranscript  = '';
+  voiceIsRecording = true;
+
+  const btn = document.getElementById('life-voice-btn');
+  if (btn) { btn.classList.add('life-voice-btn--active'); btn.title = 'Stop recording'; }
+  setVoiceStatus('listening', '…');
+  document.getElementById('life-voice-bar')?.classList.remove('hidden');
+
+  voiceRecognition.start();
+}
+
+function stopVoice(process = true) {
+  voiceIsRecording = false;
+  try { voiceRecognition?.stop(); } catch {}
+
+  const btn = document.getElementById('life-voice-btn');
+  if (btn) { btn.classList.remove('life-voice-btn--active'); btn.title = 'Dictate with AI'; }
+
+  if (process && voiceTranscript.trim()) {
+    processVoiceWithGroq(voiceTranscript.trim(), voiceTargetHour, voiceTargetDate);
+  } else {
+    document.getElementById('life-voice-bar')?.classList.add('hidden');
+  }
+}
+
+async function processVoiceWithGroq(transcript, hour, date) {
+  setVoiceStatus('processing', 'AI is processing…');
+
+  try {
+    const res  = await fetch('/.netlify/functions/life-voice', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ transcript }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    document.getElementById('life-voice-bar')?.classList.add('hidden');
+    openModal(hour, date, data.activity, data.category);
+  } catch (err) {
+    setVoiceStatus('error', `Failed: ${err.message}`);
+    setTimeout(() => document.getElementById('life-voice-bar')?.classList.add('hidden'), 3000);
+  }
+}
+
+function setVoiceStatus(state, text) {
+  const el = document.getElementById('life-voice-status');
+  if (!el) return;
+  el.textContent  = text;
+  el.className    = `life-voice-status life-voice-status--${state}`;
 }
 
 // ── Alarm system ──────────────────────────────────────────────────────────

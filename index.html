@@ -574,7 +574,14 @@
     <div class="life-day-panel">
       <div class="life-day-panel-header">
         <span id="life-day-label"></span>
-        <button id="btn-life-day-close" type="button">&#10005;</button>
+        <div class="life-day-header-actions">
+          <button id="life-voice-btn" class="life-voice-btn hidden" type="button" title="Dictate with AI">&#127908;</button>
+          <button id="btn-life-day-close" type="button">&#10005;</button>
+        </div>
+      </div>
+      <div id="life-voice-bar" class="life-voice-bar hidden">
+        <span class="life-voice-wave">&#9646;&#9646;&#9646;&#9646;&#9646;</span>
+        <span id="life-voice-status" class="life-voice-status life-voice-status--listening">…</span>
       </div>
       <div id="life-day-hours" class="life-day-hours"></div>
     </div>

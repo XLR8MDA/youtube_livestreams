@@ -31,7 +31,3 @@
 # Triggered every 5 min, Mon–Fri only — exits early outside active IST windows
 [functions."live-checker"]
   schedule = "*/5 * * * 1-5"
-
-# Processes one ended stream per run — fetches transcript, runs Groq, writes to stream-log
-[functions."auto-analyze"]
-  schedule = "*/5 * * * *"

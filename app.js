@@ -39,7 +39,6 @@ let isRefreshing = false;
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  setupTabs();    // synchronous — must run before any awaits so tabs work immediately
   setupToolbar();
   setupModal();
   await loadState();
@@ -1047,42 +1046,4 @@ function escHtml(str) {
 
 function escAttr(str) {
   return String(str).replace(/"/g, '&quot;');
-}
-
-// ── Tab Switching ─────────────────────────────────────────────────────────
-// Lives here because it controls the whole page layout, not just backtest.
-function setupTabs() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-  });
-}
-
-function switchTab(tab) {
-  const isLive     = tab === 'live';
-  const isBacktest = tab === 'backtest';
-  const isStats    = tab === 'stats';
-  const isCourse   = tab === 'course';
-  const isLife     = tab === 'life';
-
-  document.querySelectorAll('.tab-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.tab === tab)
-  );
-  document.getElementById('grid-container').classList.toggle('hidden', !isLive);
-  document.getElementById('backtest-panel').classList.toggle('hidden', !isBacktest);
-  document.getElementById('stats-panel').classList.toggle('hidden', !isStats);
-  document.getElementById('course-panel').classList.toggle('hidden', !isCourse);
-  document.getElementById('life-panel').classList.toggle('hidden', !isLife);
-
-  ['btn-sync', 'btn-refresh'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = isLive ? '' : 'none';
-  });
-
-  if (isBacktest) {
-    if (typeof populateChannelSelect === 'function') populateChannelSelect();
-    if (typeof populatePairSelect    === 'function') populatePairSelect();
-  }
-  if (isStats  && typeof onStatsTabActivated  === 'function') onStatsTabActivated();
-  if (isCourse && typeof onCourseTabActivated === 'function') onCourseTabActivated();
-  if (isLife   && typeof onLifeTabActivated   === 'function') onLifeTabActivated();
 }

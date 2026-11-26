@@ -9,11 +9,17 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="base.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="past.css">
 </head>
 <body>
 
   <header id="toolbar">
     <span id="app-title">TRADING STREAMS</span>
+
+    <nav id="tab-nav" aria-label="Dashboard tabs">
+      <button id="tab-live" class="tab-btn active" data-tab="live" type="button">Live</button>
+      <button id="tab-past" class="tab-btn" data-tab="past" type="button">Past</button>
+    </nav>
 
     <div id="toolbar-right">
       <span id="live-count">&mdash; LIVE</span>
@@ -26,6 +32,19 @@
   <main id="grid-container">
     <!-- .stream-cell divs injected by app.js -->
   </main>
+
+  <section id="past-panel" class="hidden" aria-labelledby="tab-past">
+    <aside id="past-sidebar">
+      <label for="past-channel-select">Channel</label>
+      <select id="past-channel-select"></select>
+      <ul id="past-stream-list"></ul>
+      <button id="btn-past-more" type="button" class="hidden">Load more</button>
+    </aside>
+    <div id="past-player">
+      <div id="past-player-title">Select a past stream</div>
+      <iframe id="past-frame" title="Past stream" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+    </div>
+  </section>
 
   <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Manage Channels">
     <div id="modal">
@@ -66,5 +85,6 @@
   <script src="config.js"></script>
 
   <script src="app.js"></script>
+  <script src="past.js"></script>
 </body>
 </html>
